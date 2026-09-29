@@ -53,12 +53,12 @@
         <td>{{ item.reason }}</td>
         <td>
           <form action="/requests" method="post">
-            <input type="hidden" name="acting_user_id" value="{{ current_user.id }}">
             <input type="hidden" name="resource_id" value="{{ item.resource.id }}">
             <input type="hidden" name="start" value="{{ filters.start }}">
             <input type="hidden" name="end" value="{{ filters.end }}">
             <input type="hidden" name="attendees" value="{{ filters.attendees }}">
             <input type="hidden" name="purpose" value="Resource booking">
+            <p class="request-outcome">{% if current_user.role == "student" or (current_user.role == "faculty" and item.resource.requires_approval) %}This request will need admin approval.{% else %}This will be approved immediately.{% endif %}</p>
             <button type="submit">Book</button>
           </form>
         </td>

@@ -23,12 +23,12 @@
         <td class="mono">{{ option.resource.capacity }}</td>
         <td>
           <form action="/requests" method="post" class="inline">
-            <input type="hidden" name="acting_user_id" value="{{ current_user.id }}">
             <input type="hidden" name="resource_id" value="{{ option.resource.id }}">
             <input type="hidden" name="start" value="{{ option.start.strftime("%Y-%m-%dT%H:%M") }}">
             <input type="hidden" name="end" value="{{ option.end.strftime("%Y-%m-%dT%H:%M") }}">
             <input type="hidden" name="attendees" value="{{ attendees }}">
             <input type="hidden" name="purpose" value="{{ purpose }}">
+            <p class="request-outcome">{% if current_user.role == "student" or (current_user.role == "faculty" and option.resource.requires_approval) %}This request will need admin approval.{% else %}This will be approved immediately.{% endif %}</p>
             <button type="submit">Book</button>
           </form>
         </td>

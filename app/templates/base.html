@@ -11,27 +11,28 @@
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/resources">Quorum</a>
+      <a class="brand" href="/">Quorum</a>
+      {% if current_user %}
       <nav>
-        <a href="/resources">Resources</a>
+        <a href="/resources">Search</a>
         <a href="/my-requests">My requests</a>
-        <a href="/dashboard">Dashboard</a>
-        {% if current_user and current_user.role == "admin" %}
+        {% if current_user.role == "admin" %}
         <a href="/admin/requests">Approvals</a>
-        <a href="/admin/resources">Admin resources</a>
+        <a href="/admin/all-requests">All requests</a>
+        <a href="/admin/resources">Resources</a>
+        <a href="/dashboard">Dashboard</a>
         {% endif %}
       </nav>
-      <form class="switcher" action="/switch-user" method="post">
-        <input type="hidden" name="next_path" value="{{ request.url.path }}">
-        <label for="user_id">Acting as</label>
-        <select id="user_id" name="user_id" onchange="this.form.submit()">
-          {% for user in users %}
-          <option value="{{ user.id }}" {% if current_user and user.id == current_user.id %}selected{% endif %}>
-            {{ user.name }} / {{ user.role }}
-          </option>
-          {% endfor %}
-        </select>
-      </form>
+      <div class="account-nav">
+        <span>{{ current_user.name }} / {{ current_user.role }}</span>
+        <a href="/logout">Log out</a>
+      </div>
+      {% else %}
+      <nav class="public-nav">
+        <a href="/login">Log in</a>
+        <a href="/signup">Sign up</a>
+      </nav>
+      {% endif %}
     </header>
     <main>
       {% if message %}<p class="notice">{{ message }}</p>{% endif %}

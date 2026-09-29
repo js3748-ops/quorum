@@ -7,9 +7,15 @@
   {% if booking_request.status == "approved" %}
   <h1>Your booking is confirmed.</h1>
   <p>The slot is reserved. You can find it at any time under My requests.</p>
-  {% else %}
+  {% elif booking_request.status == "pending" %}
   <h1>Your request is awaiting approval.</h1>
   <p>The slot is held while an administrator reviews it. Its current status is pending.</p>
+  {% elif booking_request.status == "rejected" %}
+  <h1>Your request was rejected.</h1>
+  <p>{% if booking_request.rejection_note %}{{ booking_request.rejection_note }}{% else %}The requested slot has been released.{% endif %}</p>
+  {% else %}
+  <h1>Your request is {{ booking_request.status }}.</h1>
+  <p>View My requests for the latest decision details.</p>
   {% endif %}
 </section>
 

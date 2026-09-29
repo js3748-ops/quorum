@@ -32,7 +32,11 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    password_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    password_salt: Mapped[str | None] = mapped_column(String(32), nullable=True)
     role: Mapped[str] = mapped_column(String(30), nullable=False, default="student")
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class Resource(Base):

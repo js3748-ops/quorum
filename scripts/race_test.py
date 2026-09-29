@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta
 from http.client import HTTPConnection
+from http.cookies import SimpleCookie
 from threading import Barrier
 from urllib.parse import urlencode, urlparse
 import sys
@@ -9,7 +10,30 @@ import sys
 WORKERS = 20
 
 
-def submit(base_url: str, payload: str, barrier: Barrier) -> tuple[int, str]:
+def login(base_url: str) -> str:
+    target = urlparse(base_url)
+    connection = HTTPConnection(target.hostname, target.port or 80, timeout=30)
+    try:
+        connection.request(
+            "POST",
+            "/login",
+            body=urlencode({"email": "asha@quorum.local", "password": "demo1234"}),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        response = connection.getresponse()
+        response.read()
+        if response.status != 303:
+            raise SystemExit(f"Login failed with status {response.status}. Run the seed script first.")
+        cookie = SimpleCookie()
+        cookie.load(response.getheader("Set-Cookie") or "")
+        if "session" not in cookie:
+            raise SystemExit("Login did not return a session cookie.")
+        return f"session={cookie['session'].value}"
+    finally:
+        connection.close()
+
+
+def submit(base_url: str, payload: str, barrier: Barrier, session_cookie: str) -> tuple[int, str]:
     target = urlparse(base_url)
     connection = HTTPConnection(target.hostname, target.port or 80, timeout=30)
     barrier.wait()
@@ -20,7 +44,7 @@ def submit(base_url: str, payload: str, barrier: Barrier) -> tuple[int, str]:
             body=payload,
             headers={
                 "Content-Type": "application/x-www-form-urlencoded",
-                "Cookie": "user_id=1",
+                "Cookie": session_cookie,
             },
         )
         response = connection.getresponse()
@@ -45,9 +69,15 @@ def main() -> None:
             "purpose": "Concurrency race test",
         }
     )
+    session_cookie = login(base_url)
     barrier = Barrier(WORKERS)
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        results = list(pool.map(lambda _: submit(base_url, payload, barrier), range(WORKERS)))
+        results = list(
+            pool.map(
+                lambda _: submit(base_url, payload, barrier, session_cookie),
+                range(WORKERS),
+            )
+        )
 
     succeeded = sum(status == 303 and location.startswith("/requests/") for status, location in results)
     rejected = sum(status == 200 for status, _ in results)

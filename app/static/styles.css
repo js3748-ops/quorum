@@ -52,7 +52,7 @@ nav {
 }
 
 nav a,
-.switcher label,
+.account-nav,
 .status,
 .kicker,
 th {
@@ -62,10 +62,18 @@ th {
   letter-spacing: 0;
 }
 
-.switcher {
+.account-nav {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.public-nav {
+  grid-column: 3;
 }
 
 h1,
@@ -403,6 +411,27 @@ dd {
   grid-column: 1 / -1;
 }
 
+.new-label {
+  color: var(--accent);
+}
+
+.request-outcome {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 8px 0;
+  max-width: 240px;
+}
+
+.request-filters {
+  display: grid;
+  grid-template-columns: 150px 150px minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 18px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 16px;
+  padding-bottom: 20px;
+}
+
 .secondary-action {
   border-color: var(--ink);
   color: var(--ink);
@@ -415,6 +444,64 @@ dd {
 .empty-state {
   border-bottom: 1px solid var(--rule);
   padding: 30px 0;
+}
+
+.landing {
+  max-width: 760px;
+  padding: 80px 0 32px;
+}
+
+.landing h1 {
+  font-size: 72px;
+}
+
+.landing > p:not(.kicker):not(.page-actions) {
+  color: var(--muted);
+  font-size: 20px;
+  max-width: 680px;
+}
+
+.auth-page {
+  max-width: 520px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 18px;
+}
+
+.auth-form button {
+  justify-self: start;
+}
+
+.auth-switch {
+  color: var(--muted);
+  margin-top: 22px;
+}
+
+.demo-accounts {
+  border-top: 1px solid var(--rule);
+  margin-top: 44px;
+  padding-top: 22px;
+}
+
+.demo-accounts h2 {
+  font-size: 28px;
+}
+
+.demo-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 0 28px;
+}
+
+.demo-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--rule);
+  padding: 14px 0;
 }
 
 .table-scroll {
@@ -582,6 +669,22 @@ tr:target td {
   .approval-row,
   .request-summary dl {
     display: block;
+  }
+
+  .request-filters {
+    display: block;
+  }
+
+  .public-nav {
+    margin-top: 14px;
+  }
+
+  .account-nav {
+    margin-top: 14px;
+  }
+
+  .demo-list {
+    grid-template-columns: 1fr;
   }
 
   .topbar > * + *,

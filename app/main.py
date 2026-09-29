@@ -1,13 +1,18 @@
+import os
 from datetime import datetime, time, timedelta
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, Request as WebRequest
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.analytics import current_week_dashboard, ranked_resources
+from app.auth import hash_password, verify_password
 from app.database import SessionLocal, get_db, init_db
 from app.models import Request, Resource, Unavailability, User, Zone
 from app.natural_language import parse_natural_language
@@ -19,6 +24,8 @@ from app.services import (
     suggest_alternatives,
     validate_request_window,
 )
+
+load_dotenv()
 
 app = FastAPI(title="Quorum")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -36,24 +43,9 @@ def startup():
 
 
 def current_user(web_request: WebRequest, db: Session) -> User | None:
-    user_id = web_request.cookies.get("user_id")
-    if user_id and user_id.isdigit():
-        user = db.get(User, int(user_id))
-        if user and user.role != "background":
-            return user
-    return db.scalars(
-        select(User).where(User.role != "background").order_by(User.id)
-    ).first()
-
-
-def acting_user(web_request: WebRequest, db: Session, acting_user_id: int | None) -> User | None:
-    if acting_user_id:
-        user = db.get(User, acting_user_id)
-        if user and user.role != "background":
-            return user
-    cookie_id = web_request.cookies.get("user_id")
-    if cookie_id and cookie_id.isdigit():
-        user = db.get(User, int(cookie_id))
+    user_id = web_request.session.get("user_id")
+    if isinstance(user_id, int):
+        user = db.get(User, user_id)
         if user and user.role != "background":
             return user
     return None
@@ -66,11 +58,8 @@ def render(
     db: Session,
     status_code: int = 200,
 ):
-    users = db.scalars(
-        select(User).where(User.role != "background").order_by(User.role, User.name)
-    ).all()
     user = current_user(web_request, db)
-    base = {"request": web_request, "users": users, "current_user": user}
+    base = {"request": web_request, "current_user": user}
     base.update(context)
     return templates.TemplateResponse(template, base, status_code=status_code)
 
@@ -78,18 +67,6 @@ def render(
 def require_admin(user: User | None):
     if not user or user.role != "admin":
         raise AdminOnlyError
-
-
-def user_redirect(target: str, user: User) -> RedirectResponse:
-    response = RedirectResponse(target, status_code=303)
-    response.set_cookie(
-        "user_id",
-        str(user.id),
-        max_age=60 * 60 * 24 * 7,
-        path="/",
-        samesite="lax",
-    )
-    return response
 
 
 @app.exception_handler(AdminOnlyError)
@@ -101,22 +78,133 @@ def admin_only_page(web_request: WebRequest, _error: AdminOnlyError):
         db.close()
 
 
+@app.middleware("http")
+async def require_login(web_request: WebRequest, call_next):
+    public_paths = {"/", "/login", "/login/demo", "/signup"}
+    if web_request.url.path in public_paths or web_request.url.path.startswith("/static/"):
+        return await call_next(web_request)
+    user_id = web_request.session.get("user_id")
+    if not isinstance(user_id, int):
+        return RedirectResponse("/login", status_code=303)
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if not user or user.role == "background":
+            web_request.session.clear()
+            return RedirectResponse("/login", status_code=303)
+    return await call_next(web_request)
+
+
+# Local development only. Production deployments must set SESSION_SECRET.
+SESSION_SECRET = os.getenv("SESSION_SECRET") or "local-development-only-change-me"
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    same_site="lax",
+    https_only=False,
+    max_age=60 * 60 * 24 * 7,
+)
+
+
 @app.get("/")
 def home(web_request: WebRequest, db: Session = Depends(get_db)):
+    return render(web_request, "landing.html", {}, db)
+
+
+@app.get("/signup")
+def signup_page(web_request: WebRequest, db: Session = Depends(get_db)):
+    return render(web_request, "signup.html", {"form": {}}, db)
+
+
+@app.post("/signup")
+def signup(
+    web_request: WebRequest,
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    role: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    form = {"name": name.strip(), "email": email.strip(), "role": role}
+    normalized_email = email.strip().lower()
+    if role not in {"faculty", "student"}:
+        return render(web_request, "signup.html", {"error": "Choose faculty or student.", "form": form}, db, 400)
+    if len(password) < 8:
+        return render(web_request, "signup.html", {"error": "Password must be at least 8 characters.", "form": form}, db, 400)
+    if db.scalar(select(User.id).where(User.email == normalized_email)):
+        return render(web_request, "signup.html", {"error": "An account with that email already exists.", "form": form}, db, 400)
+    password_hash, password_salt = hash_password(password)
+    user = User(
+        name=name.strip(),
+        email=normalized_email,
+        password_hash=password_hash,
+        password_salt=password_salt,
+        role=role,
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return render(web_request, "signup.html", {"error": "An account with that email already exists.", "form": form}, db, 400)
+    db.refresh(user)
+    web_request.session.clear()
+    web_request.session["user_id"] = user.id
     return RedirectResponse("/resources", status_code=303)
 
 
-@app.post("/switch-user")
-def switch_user(
-    user_id: int = Form(...),
-    next_path: str = Form("/resources"),
+@app.get("/login")
+def login_page(web_request: WebRequest, db: Session = Depends(get_db)):
+    demos = db.scalars(
+        select(User).where(User.is_demo.is_(True)).order_by(User.role, User.name)
+    ).all()
+    return render(web_request, "login.html", {"demos": demos}, db)
+
+
+@app.post("/login")
+def login(
+    web_request: WebRequest,
+    email: str = Form(...),
+    password: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    user = db.get(User, user_id)
-    if not user or user.role == "background":
-        raise HTTPException(status_code=400, detail="Invalid acting user")
-    target = next_path if next_path.startswith("/") and not next_path.startswith("//") else "/resources"
-    return user_redirect(target, user)
+    normalized_email = email.strip().lower()
+    user = db.scalar(select(User).where(User.email == normalized_email))
+    if not user or user.role == "background" or not verify_password(password, user.password_hash, user.password_salt):
+        demos = db.scalars(select(User).where(User.is_demo.is_(True)).order_by(User.role, User.name)).all()
+        return render(
+            web_request,
+            "login.html",
+            {"error": "Email or password is incorrect.", "email": email.strip(), "demos": demos},
+            db,
+            400,
+        )
+    web_request.session.clear()
+    web_request.session["user_id"] = user.id
+    target = "/admin/requests" if user.role == "admin" else "/resources"
+    return RedirectResponse(target, status_code=303)
+
+
+@app.post("/login/demo")
+def demo_login(
+    web_request: WebRequest,
+    email: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = db.scalar(
+        select(User).where(User.email == email.strip().lower(), User.is_demo.is_(True))
+    )
+    if not user:
+        raise HTTPException(status_code=404)
+    web_request.session.clear()
+    web_request.session["user_id"] = user.id
+    target = "/admin/requests" if user.role == "admin" else "/resources"
+    return RedirectResponse(target, status_code=303)
+
+
+@app.get("/logout")
+def logout(web_request: WebRequest):
+    web_request.session.clear()
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/resources")
@@ -185,6 +273,7 @@ def resources(web_request: WebRequest, db: Session = Depends(get_db)):
 
 @app.get("/dashboard")
 def dashboard(web_request: WebRequest, db: Session = Depends(get_db)):
+    require_admin(current_user(web_request, db))
     return render(
         web_request,
         "dashboard.html",
@@ -225,12 +314,11 @@ def create_request(
     end: str = Form(...),
     attendees: int = Form(...),
     purpose: str = Form(""),
-    acting_user_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    user = acting_user(web_request, db, acting_user_id)
+    user = current_user(web_request, db)
     if not user:
-        return RedirectResponse("/resources?error=Seed users before booking.", status_code=303)
+        return RedirectResponse("/login", status_code=303)
     resource = db.get(Resource, resource_id)
     if not resource:
         raise HTTPException(status_code=404)
@@ -239,6 +327,7 @@ def create_request(
     created, conflict = create_booking_request(
         db,
         user_id=user.id,
+        user_role=user.role,
         resource=resource,
         start=start_dt,
         end=end_dt,
@@ -267,7 +356,7 @@ def create_request(
             },
             db,
         )
-    return user_redirect(f"/requests/{created.id}/confirmation", user)
+    return RedirectResponse(f"/requests/{created.id}/confirmation", status_code=303)
 
 
 @app.get("/requests/{request_id}/confirmation")
@@ -322,17 +411,63 @@ def admin_requests(web_request: WebRequest, db: Session = Depends(get_db)):
     require_admin(current_user(web_request, db))
     pending = db.scalars(
         select(Request)
-        .where(Request.status == "pending")
+        .join(Request.user)
+        .where(Request.status == "pending", User.role != "background")
         .options(joinedload(Request.user), joinedload(Request.resource).joinedload(Resource.zone))
-        .order_by(Request.created_at, Request.id)
+        .order_by(Request.created_at.desc(), Request.id.desc())
     ).all()
     return render(
         web_request,
         "admin_requests.html",
         {
             "pending": pending,
+            "new_cutoff": datetime.utcnow() - timedelta(hours=1),
             "message": web_request.query_params.get("message"),
             "error": web_request.query_params.get("error"),
+        },
+        db,
+    )
+
+
+@app.get("/admin/all-requests")
+def admin_all_requests(web_request: WebRequest, db: Session = Depends(get_db)):
+    require_admin(current_user(web_request, db))
+    status_filter = web_request.query_params.get("status", "all")
+    role_filter = web_request.query_params.get("role", "all")
+    resource_value = web_request.query_params.get("resource", "all")
+    if status_filter not in {"all", "pending", "approved", "rejected", "cancelled"}:
+        status_filter = "all"
+    if role_filter not in {"all", "student", "faculty", "admin"}:
+        role_filter = "all"
+    resource_id = int(resource_value) if resource_value.isdigit() else None
+
+    query = (
+        select(Request)
+        .join(Request.user)
+        .where(User.role != "background")
+        .options(joinedload(Request.user), joinedload(Request.resource).joinedload(Resource.zone))
+        .order_by(Request.created_at.desc(), Request.id.desc())
+    )
+    if status_filter != "all":
+        query = query.where(Request.status == status_filter)
+    if role_filter != "all":
+        query = query.where(User.role == role_filter)
+    if resource_id is not None:
+        query = query.where(Request.resource_id == resource_id)
+
+    requests = db.scalars(query).all()
+    resources = db.scalars(select(Resource).order_by(Resource.name)).all()
+    return render(
+        web_request,
+        "admin_all_requests.html",
+        {
+            "requests": requests,
+            "resources": resources,
+            "filters": {
+                "status": status_filter,
+                "role": role_filter,
+                "resource": resource_id,
+            },
         },
         db,
     )
@@ -342,10 +477,9 @@ def admin_requests(web_request: WebRequest, db: Session = Depends(get_db)):
 def approve_request(
     request_id: int,
     web_request: WebRequest,
-    acting_user_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    admin = acting_user(web_request, db, acting_user_id)
+    admin = current_user(web_request, db)
     require_admin(admin)
     booking_request = db.get(Request, request_id)
     if not booking_request:
@@ -354,7 +488,7 @@ def approve_request(
         db, booking_request=booking_request, admin_id=admin.id, decision="approved"
     )
     target = "/admin/requests?error=Request+could+not+be+approved" if error else "/admin/requests?message=Request+approved"
-    return user_redirect(target, admin)
+    return RedirectResponse(target, status_code=303)
 
 
 @app.post("/admin/requests/{request_id}/reject")
@@ -362,10 +496,9 @@ def reject_request(
     request_id: int,
     web_request: WebRequest,
     rejection_note: str = Form(""),
-    acting_user_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    admin = acting_user(web_request, db, acting_user_id)
+    admin = current_user(web_request, db)
     require_admin(admin)
     booking_request = db.get(Request, request_id)
     if not booking_request:
@@ -378,7 +511,7 @@ def reject_request(
         rejection_note=rejection_note,
     )
     target = "/admin/requests?error=Request+could+not+be+rejected" if error else "/admin/requests?message=Request+rejected"
-    return user_redirect(target, admin)
+    return RedirectResponse(target, status_code=303)
 
 
 @app.get("/admin/resources")

@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
+from app.auth import hash_password  # noqa: E402
 from app.models import BookingSlot, Request, Resource, Unavailability, User, Zone  # noqa: E402
 from app.services import slots_between  # noqa: E402
 
@@ -33,16 +34,27 @@ def main():
         db.add_all(zones)
         db.flush()
 
-        users = [
-            User(name="Asha Mehta", role="student"),
-            User(name="Kabir Rao", role="student"),
-            User(name="Nila Shah", role="student"),
-            User(name="Dev Sen", role="student"),
-            User(name="Prof. Ananya Iyer", role="faculty"),
-            User(name="Prof. Rohan Das", role="faculty"),
-            User(name="Mira Kapoor", role="faculty"),
-            User(name="Campus Admin", role="admin"),
+        demo_specs = [
+            ("Asha Mehta", "asha@quorum.local", "student"),
+            ("Kabir Rao", "kabir@quorum.local", "student"),
+            ("Nila Shah", "nila@quorum.local", "student"),
+            ("Prof. Ananya Iyer", "ananya@quorum.local", "faculty"),
+            ("Prof. Rohan Das", "rohan@quorum.local", "faculty"),
+            ("Campus Admin", "admin@quorum.local", "admin"),
         ]
+        users = []
+        for name, email, role in demo_specs:
+            password_hash, password_salt = hash_password("demo1234")
+            users.append(
+                User(
+                    name=name,
+                    email=email,
+                    password_hash=password_hash,
+                    password_salt=password_salt,
+                    role=role,
+                    is_demo=True,
+                )
+            )
         db.add_all(users)
         db.flush()
 

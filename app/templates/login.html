@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Log in / Quorum{% endblock %}
+{% block content %}
+<section class="auth-page">
+  <div class="page-head">
+    <p class="kicker">Welcome back</p>
+    <h1>Log in</h1>
+  </div>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form class="auth-form" action="/login" method="post">
+    <label>Email<input name="email" type="email" value="{{ email or '' }}" autocomplete="email" required></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit">Log in</button>
+  </form>
+  <p class="auth-switch">Need an account? <a href="/signup">Sign up</a>.</p>
+</section>
+
+<section class="demo-accounts">
+  <h2>Demo accounts</h2>
+  <div class="demo-list">
+    {% for user in demos %}
+    <form action="/login/demo" method="post" class="demo-account">
+      <input type="hidden" name="email" value="{{ user.email }}">
+      <span><strong>{{ user.name }}</strong><br><span class="muted">{{ user.email }} / {{ user.role }}</span></span>
+      <button type="submit">Log in</button>
+    </form>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
