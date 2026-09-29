@@ -26,9 +26,11 @@
     </dl>
     <div class="decision-actions">
       <form action="/admin/requests/{{ item.id }}/approve" method="post">
+        <input type="hidden" name="acting_user_id" value="{{ current_user.id }}">
         <button type="submit">Approve</button>
       </form>
       <form action="/admin/requests/{{ item.id }}/reject" method="post">
+        <input type="hidden" name="acting_user_id" value="{{ current_user.id }}">
         <label for="note-{{ item.id }}">Rejection note (optional)</label>
         <input id="note-{{ item.id }}" name="rejection_note" placeholder="Reason for rejection">
         <button class="secondary-action" type="submit">Reject</button>

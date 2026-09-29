@@ -46,14 +46,14 @@ def current_user(web_request: WebRequest, db: Session) -> User | None:
     ).first()
 
 
-def booking_user(web_request: WebRequest, db: Session, acting_user_id: int | None) -> User | None:
+def acting_user(web_request: WebRequest, db: Session, acting_user_id: int | None) -> User | None:
+    if acting_user_id:
+        user = db.get(User, acting_user_id)
+        if user and user.role != "background":
+            return user
     cookie_id = web_request.cookies.get("user_id")
     if cookie_id and cookie_id.isdigit():
         user = db.get(User, int(cookie_id))
-        if user and user.role != "background":
-            return user
-    if acting_user_id:
-        user = db.get(User, acting_user_id)
         if user and user.role != "background":
             return user
     return None
@@ -80,6 +80,18 @@ def require_admin(user: User | None):
         raise AdminOnlyError
 
 
+def user_redirect(target: str, user: User) -> RedirectResponse:
+    response = RedirectResponse(target, status_code=303)
+    response.set_cookie(
+        "user_id",
+        str(user.id),
+        max_age=60 * 60 * 24 * 7,
+        path="/",
+        samesite="lax",
+    )
+    return response
+
+
 @app.exception_handler(AdminOnlyError)
 def admin_only_page(web_request: WebRequest, _error: AdminOnlyError):
     db = SessionLocal()
@@ -104,15 +116,7 @@ def switch_user(
     if not user or user.role == "background":
         raise HTTPException(status_code=400, detail="Invalid acting user")
     target = next_path if next_path.startswith("/") and not next_path.startswith("//") else "/resources"
-    response = RedirectResponse(target, status_code=303)
-    response.set_cookie(
-        "user_id",
-        str(user.id),
-        max_age=60 * 60 * 24 * 7,
-        path="/",
-        samesite="lax",
-    )
-    return response
+    return user_redirect(target, user)
 
 
 @app.get("/resources")
@@ -224,7 +228,7 @@ def create_request(
     acting_user_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    user = booking_user(web_request, db, acting_user_id)
+    user = acting_user(web_request, db, acting_user_id)
     if not user:
         return RedirectResponse("/resources?error=Seed users before booking.", status_code=303)
     resource = db.get(Resource, resource_id)
@@ -263,7 +267,7 @@ def create_request(
             },
             db,
         )
-    return RedirectResponse(f"/requests/{created.id}/confirmation", status_code=303)
+    return user_redirect(f"/requests/{created.id}/confirmation", user)
 
 
 @app.get("/requests/{request_id}/confirmation")
@@ -336,9 +340,12 @@ def admin_requests(web_request: WebRequest, db: Session = Depends(get_db)):
 
 @app.post("/admin/requests/{request_id}/approve")
 def approve_request(
-    request_id: int, web_request: WebRequest, db: Session = Depends(get_db)
+    request_id: int,
+    web_request: WebRequest,
+    acting_user_id: int | None = Form(None),
+    db: Session = Depends(get_db),
 ):
-    admin = current_user(web_request, db)
+    admin = acting_user(web_request, db, acting_user_id)
     require_admin(admin)
     booking_request = db.get(Request, request_id)
     if not booking_request:
@@ -347,7 +354,7 @@ def approve_request(
         db, booking_request=booking_request, admin_id=admin.id, decision="approved"
     )
     target = "/admin/requests?error=Request+could+not+be+approved" if error else "/admin/requests?message=Request+approved"
-    return RedirectResponse(target, status_code=303)
+    return user_redirect(target, admin)
 
 
 @app.post("/admin/requests/{request_id}/reject")
@@ -355,9 +362,10 @@ def reject_request(
     request_id: int,
     web_request: WebRequest,
     rejection_note: str = Form(""),
+    acting_user_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    admin = current_user(web_request, db)
+    admin = acting_user(web_request, db, acting_user_id)
     require_admin(admin)
     booking_request = db.get(Request, request_id)
     if not booking_request:
@@ -370,7 +378,7 @@ def reject_request(
         rejection_note=rejection_note,
     )
     target = "/admin/requests?error=Request+could+not+be+rejected" if error else "/admin/requests?message=Request+rejected"
-    return RedirectResponse(target, status_code=303)
+    return user_redirect(target, admin)
 
 
 @app.get("/admin/resources")
