@@ -1,45 +1,81 @@
 # Quorum
 
-A congestion-aware campus resource allocator built with FastAPI, SQLite, Jinja2, vanilla JavaScript, and hand-written CSS.
-
-This implementation covers Phases 1 through 7.
+A congestion-aware campus resource allocator with a FastAPI JSON backend and a static HTML, CSS, and JavaScript frontend.
 
 ## Setup
 
 ```bash
 pip install -r requirements.txt
-python scripts/seed.py
-uvicorn app.main:app --reload
+python backend/seed.py
 ```
 
-Open `http://127.0.0.1:8000`.
+Set `SESSION_SECRET` in `.env` before deployment. The backend contains a clearly marked local-development fallback. `DATABASE_URL` is optional and defaults to the existing root-level SQLite database; set it to another SQLAlchemy URL when moving to PostgreSQL.
 
-Set `SESSION_SECRET` in `.env` before deployment. A clearly marked development-only fallback is used when it is absent.
+All seeded demo accounts use the password `demo1234`. They are also available as one-click options on the login page.
 
-Seeded demo accounts use the password `demo1234` and are listed on the login page. Admin accounts are seed-only; sign-up supports student and faculty accounts.
+## Run
 
-Natural-language search works without configuration through the built-in rule parser. To use an OpenAI-compatible API instead, set `LLM_API_KEY`; `LLM_API_URL` and `LLM_MODEL` are optional overrides. API failures automatically fall back to local parsing.
+Start the backend in one terminal:
 
-With the app running, verify the database concurrency guarantee:
+```bash
+python run_backend.py
+```
+
+Start the frontend in a second terminal:
+
+```bash
+python run_frontend.py
+```
+
+Open `http://127.0.0.1:5500`. Keep the `127.0.0.1` hostname so the frontend and API share session cookies correctly.
+
+To start both servers from one terminal instead, run:
+
+```bash
+python dev.py
+```
+
+### Port already in use
+
+If a launcher reports that port `8000` or `5500` is busy, find the process and stop it before trying again:
+
+```powershell
+netstat -ano | findstr :PORT
+taskkill /PID <pid> /F
+```
+
+## Architecture
+
+- `frontend/`: static pages, the shared visual system in `styles.css`, page behavior in `js/app.js`, and all credentialed API access in `js/api.js`.
+- `backend/`: FastAPI application split into `routes/`, `services/`, `models/`, and typed Pydantic `schemas/`. It serves JSON only.
+- Database: SQLAlchemy uses `DATABASE_URL`, defaulting to `quorum.db`. The seed script retains hidden demand users for analytics while resetting visible demo users to zero requests.
+
+The frontend origins `http://127.0.0.1:5500` and `http://localhost:5500` are the only origins allowed by CORS. Session requests include credentials and use a SameSite=Lax signed cookie.
+
+## API
+
+Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
+
+- `/api/auth/*`: current user, signup, login, demo login, logout, and demo accounts.
+- `/api/resources`: natural-language or structured congestion-aware resource search.
+- `/api/resources/{id}`: resource details, unavailable windows, and recent requests.
+- `/api/requests`: create a request with conflict alternatives.
+- `/api/requests/{id}` and `/api/my-requests`: request details and user history.
+- `/api/admin/requests/*`: pending queue plus approve and reject actions.
+- `/api/admin/all-requests`: all visible-user requests with status, role, and resource filters.
+- `/api/admin/resources/*`: create, update, deactivate, and block resources.
+- `/api/admin/dashboard`: request counts, peak hours, congestion, and utilization analytics.
+
+Every endpoint has a tag, summary, typed request schema, and typed response schema in `/docs`.
+
+## Verification
+
+With the API running, verify the database concurrency guarantee:
 
 ```bash
 python scripts/race_test.py
 ```
 
-The script sends 20 simultaneous requests for one resource and slot. It must print one success and 19 rejections. Pass a different base URL as the first argument when needed.
+The script logs in through the API, sends 20 simultaneous JSON booking requests for one resource and slot, and must report one success and 19 conflicts.
 
-## Demo
-
-1. Log in with a demo account or create a student or faculty account.
-2. Search for `Quiet lab with a projector for 4 people tomorrow at 2pm` and review the editable filters.
-3. Set the filters to the seeded Wednesday 10:00-11:00 peak and notice that Tech Park North is about 85% loaded.
-4. Notice that available rooms in quieter zones rank above Data Studio 212 despite capacity fit.
-5. Open Dashboard to compare zone and resource utilization and inspect the peak-hours grid.
-6. Visit Admin resources to add/edit/deactivate resources and add unavailability windows.
-7. Try booking an already busy room/time to see a clear conflict reason and alternatives.
-8. As a student, book any resource to see a pending request awaiting admin review.
-9. As faculty, book an ordinary resource for immediate approval or an approval-required resource for review.
-10. Log in as Campus Admin, open Approvals, and approve or reject a pending request.
-11. Use All requests to filter visible-user requests by status, role, and resource.
-12. Log back in as the requester and open My requests to see the updated status and any rejection note.
-13. Run `python scripts/race_test.py` and confirm exactly one request succeeds.
+Natural-language search works without configuration through the built-in rule parser. To use an OpenAI-compatible API, set `LLM_API_KEY`; `LLM_API_URL` and `LLM_MODEL` are optional overrides. API failures fall back to local parsing.
