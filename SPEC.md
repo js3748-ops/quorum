@@ -1,6 +1,10 @@
 # Build: Quorum — a congestion-aware resource allocator
 
-You are building a working web app in about 3 hours. Work in the phases below, in order. At the end of each phase, run the app, confirm it works, and stop to summarise what you built before continuing. Keep the code simple and readable; avoid adding libraries unless they are listed here.
+## Rules
+
+- Do not run any git commands (no init, add, commit, push, branch, checkout, reset or restore). I will handle version control myself.
+- Work in the phases below, in order. At the end of each phase, run the app, confirm it works, then stop and summarise what you built. Do not start the next phase until I ask.
+- Keep the code simple and readable. Do not add libraries beyond those listed here.
 
 ## Concept
 
