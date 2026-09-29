@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Conflict / Quorum{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="kicker">Conflict</p>
+  <h1>{{ resource.name }}</h1>
+  <p class="error">{{ conflict }}</p>
+</section>
+
+<section class="rule-section">
+  <h2>Alternatives</h2>
+  {% if alternatives %}
+  <table>
+    <thead>
+      <tr><th>Option</th><th>Resource</th><th>Time</th><th>Capacity</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for option in alternatives %}
+      <tr>
+        <td>{{ option.kind }}</td>
+        <td>{{ option.resource.name }}</td>
+        <td class="mono">{{ option.start.strftime("%a %H:%M") }}-{{ option.end.strftime("%H:%M") }}</td>
+        <td class="mono">{{ option.resource.capacity }}</td>
+        <td>
+          <form action="/requests" method="post" class="inline">
+            <input type="hidden" name="resource_id" value="{{ option.resource.id }}">
+            <input type="hidden" name="start" value="{{ option.start.strftime("%Y-%m-%dT%H:%M") }}">
+            <input type="hidden" name="end" value="{{ option.end.strftime("%Y-%m-%dT%H:%M") }}">
+            <input type="hidden" name="attendees" value="{{ attendees }}">
+            <input type="hidden" name="purpose" value="{{ purpose }}">
+            <button type="submit">Book</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No nearby alternative is free.</p>
+  {% endif %}
+</section>
+{% endblock %}

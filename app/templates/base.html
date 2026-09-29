@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Quorum{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/resources">Quorum</a>
+      <nav>
+        <a href="/resources">Resources</a>
+        <a href="/my-requests">My requests</a>
+        {% if current_user and current_user.role == "admin" %}
+        <a href="/admin/requests">Approvals</a>
+        <a href="/admin/resources">Admin resources</a>
+        {% endif %}
+      </nav>
+      <form class="switcher" action="/switch-user" method="post">
+        <label for="user_id">Acting as</label>
+        <select id="user_id" name="user_id" onchange="this.form.submit()">
+          {% for user in users %}
+          <option value="{{ user.id }}" {% if current_user and user.id == current_user.id %}selected{% endif %}>
+            {{ user.name }} / {{ user.role }}
+          </option>
+          {% endfor %}
+        </select>
+      </form>
+    </header>
+    <main>
+      {% if message %}<p class="notice">{{ message }}</p>{% endif %}
+      {% if error %}<p class="error">{{ error }}</p>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

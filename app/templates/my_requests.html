@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}My requests / Quorum{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="kicker">{{ current_user.name }}</p>
+  <h1>My requests</h1>
+  <p>Booking requests and their current decisions.</p>
+</section>
+
+{% if requests %}
+<div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th>Request</th><th>Resource</th><th>When</th><th>Purpose</th><th>Status</th><th>Decision</th></tr>
+    </thead>
+    <tbody>
+      {% for item in requests %}
+      <tr>
+        <td class="mono">#{{ item.id }}</td>
+        <td><a href="/resources/{{ item.resource.id }}">{{ item.resource.name }}</a><br><span class="muted">{{ item.resource.zone.name }}</span></td>
+        <td class="mono">{{ item.start.strftime("%a %d %b") }}<br>{{ item.start.strftime("%H:%M") }}-{{ item.end.strftime("%H:%M") }}</td>
+        <td>{{ item.purpose }}</td>
+        <td class="status status-{{ item.status }}">{{ item.status }}</td>
+        <td>
+          {% if item.status == "rejected" and item.rejection_note %}{{ item.rejection_note }}
+          {% elif item.decided_at %}<span class="mono">{{ item.decided_at.strftime("%d %b %H:%M") }}</span>
+          {% elif item.status == "approved" %}<span class="muted">Instant approval</span>
+          {% else %}<span class="muted">Awaiting review</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<section class="empty-state">
+  <h2>No requests yet</h2>
+  <p>Choose a resource to make your first booking request.</p>
+  <a class="action" href="/resources">Browse resources</a>
+</section>
+{% endif %}
+{% endblock %}

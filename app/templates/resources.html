@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Resources / Quorum{% endblock %}
+{% block content %}
+<section class="page-head">
+  <h1>Resources</h1>
+  <p>Find a room, lab, hall, or equipment item and request a slot.</p>
+</section>
+
+<table>
+  <thead>
+    <tr>
+      <th>Resource</th>
+      <th>Type</th>
+      <th>Zone</th>
+      <th>Capacity</th>
+      <th>Equipment</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for resource in resources %}
+    <tr class="{% if resource.status != 'active' %}muted{% endif %}">
+      <td><a href="/resources/{{ resource.id }}">{{ resource.name }}</a></td>
+      <td>{{ resource.type.replace("_", " ") }}</td>
+      <td>{{ resource.zone.name }}</td>
+      <td class="mono">{{ resource.capacity }}</td>
+      <td>{{ ", ".join(resource.equipment) }}</td>
+      <td class="status">{{ resource.status }}</td>
+      <td><a class="action" href="/resources/{{ resource.id }}">Book</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

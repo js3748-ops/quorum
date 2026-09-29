@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Request {{ booking_request.status }} / Quorum{% endblock %}
+{% block content %}
+<section class="page-head confirmation-head">
+  <p class="kicker">Request #{{ booking_request.id }} submitted</p>
+  <p class="confirmation-status status status-{{ booking_request.status }}">{{ booking_request.status }}</p>
+  {% if booking_request.status == "approved" %}
+  <h1>Your booking is confirmed.</h1>
+  <p>The slot is reserved. You can find it at any time under My requests.</p>
+  {% else %}
+  <h1>Your request is awaiting approval.</h1>
+  <p>The slot is held while an administrator reviews it. Its current status is pending.</p>
+  {% endif %}
+</section>
+
+<section class="request-summary">
+  <dl>
+    <div><dt>Resource</dt><dd>{{ booking_request.resource.name }}</dd></div>
+    <div><dt>Zone</dt><dd>{{ booking_request.resource.zone.name }}</dd></div>
+    <div><dt>Date</dt><dd class="mono">{{ booking_request.start.strftime("%A, %d %B %Y") }}</dd></div>
+    <div><dt>Time</dt><dd class="mono">{{ booking_request.start.strftime("%H:%M") }}-{{ booking_request.end.strftime("%H:%M") }}</dd></div>
+    <div><dt>Attendees</dt><dd class="mono">{{ booking_request.attendees }}</dd></div>
+    <div><dt>Purpose</dt><dd>{{ booking_request.purpose }}</dd></div>
+  </dl>
+</section>
+
+<p class="page-actions">
+  <a class="action" href="/my-requests">View my requests</a>
+  <a href="/resources">Browse resources</a>
+</p>
+{% endblock %}

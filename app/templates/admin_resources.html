@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Admin / Quorum{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="kicker">Admin</p>
+  <h1>Resources</h1>
+  <p>Register, edit, deactivate, and block resources.</p>
+</section>
+
+<section class="rule-section">
+  <h2>Register Resource</h2>
+  <form class="grid-form" action="/admin/resources" method="post">
+    <label>Name<input name="name" required></label>
+    <label>Type
+      <select name="type">
+        <option value="lab">lab</option>
+        <option value="classroom">classroom</option>
+        <option value="seminar_hall">seminar hall</option>
+        <option value="equipment">equipment</option>
+      </select>
+    </label>
+    <label>Zone
+      <select name="zone_id">
+        {% for zone in zones %}<option value="{{ zone.id }}">{{ zone.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Capacity<input name="capacity" type="number" min="1" value="30"></label>
+    <label>Equipment<input name="equipment" placeholder="projector, linux"></label>
+    <label>Open<input name="open_time" type="time" step="1800" value="08:00"></label>
+    <label>Close<input name="close_time" type="time" step="1800" value="20:00"></label>
+    <label class="check"><input name="requires_approval" type="checkbox" value="true"> Requires approval</label>
+    <button type="submit">Add</button>
+  </form>
+</section>
+
+<section class="rule-section">
+  <h2>Edit Resources</h2>
+  {% for resource in resources %}
+  <details class="resource-editor">
+    <summary>
+      <span>{{ resource.name }}</span>
+      <span class="mono">{{ resource.zone.name }} / {{ resource.capacity }} / {{ resource.status }}</span>
+    </summary>
+    <form class="grid-form" action="/admin/resources/{{ resource.id }}" method="post">
+      <label>Name<input name="name" value="{{ resource.name }}" required></label>
+      <label>Type
+        <select name="type">
+          {% for type in ["lab", "classroom", "seminar_hall", "equipment"] %}
+          <option value="{{ type }}" {% if resource.type == type %}selected{% endif %}>{{ type.replace("_", " ") }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Zone
+        <select name="zone_id">
+          {% for zone in zones %}
+          <option value="{{ zone.id }}" {% if resource.zone_id == zone.id %}selected{% endif %}>{{ zone.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Capacity<input name="capacity" type="number" min="1" value="{{ resource.capacity }}"></label>
+      <label>Equipment<input name="equipment" value="{{ ", ".join(resource.equipment) }}"></label>
+      <label>Status
+        <select name="status">
+          <option value="active" {% if resource.status == "active" %}selected{% endif %}>active</option>
+          <option value="maintenance" {% if resource.status == "maintenance" %}selected{% endif %}>maintenance</option>
+        </select>
+      </label>
+      <label>Open<input name="open_time" type="time" step="1800" value="{{ resource.open_time.strftime("%H:%M") }}"></label>
+      <label>Close<input name="close_time" type="time" step="1800" value="{{ resource.close_time.strftime("%H:%M") }}"></label>
+      <label class="check"><input name="requires_approval" type="checkbox" value="true" {% if resource.requires_approval %}checked{% endif %}> Requires approval</label>
+      <button type="submit">Save</button>
+    </form>
+    <form class="grid-form narrow" action="/admin/resources/{{ resource.id }}/unavailability" method="post">
+      <label>Unavailable start<input name="start" type="datetime-local" step="1800" required></label>
+      <label>Unavailable end<input name="end" type="datetime-local" step="1800" required></label>
+      <label>Reason<input name="reason" value="maintenance" required></label>
+      <button type="submit">Block</button>
+    </form>
+  </details>
+  {% endfor %}
+</section>
+{% endblock %}
