@@ -4,8 +4,13 @@
 <section class="page-head">
   <p class="kicker">Congestion-aware search</p>
   <h1>Resources</h1>
-  <p>Available resources are ranked by fit and campus zone load.</p>
 </section>
+
+<form class="command-form" action="/resources" method="get">
+  <label class="sr-only" for="command">Describe the resource you need</label>
+  <input id="command" name="q" value="{{ query_text }}" placeholder="Quiet lab with a projector for 4 people tomorrow at 2pm" autocomplete="off">
+  <button type="submit">Search</button>
+</form>
 
 <form class="search-form" action="/resources" method="get">
   <label>Type

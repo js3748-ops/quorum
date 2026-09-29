@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.analytics import current_week_dashboard, ranked_resources
 from app.database import get_db, init_db
 from app.models import Request, Resource, Unavailability, User, Zone
+from app.natural_language import parse_natural_language
 from app.services import (
     create_booking_request,
     decide_request,
@@ -68,14 +69,26 @@ def resources(web_request: WebRequest, db: Session = Depends(get_db)):
     now = datetime.now()
     week_start = datetime.combine((now - timedelta(days=now.weekday())).date(), time.min)
     default_start = week_start + timedelta(days=2, hours=10)
-    start_value = web_request.query_params.get("start", default_start.strftime("%Y-%m-%dT%H:%M"))
-    end_value = web_request.query_params.get(
-        "end", (default_start + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
-    )
-    resource_type = web_request.query_params.get("type", "lab")
-    equipment_value = web_request.query_params.get("equipment", "")
+    query_text = web_request.query_params.get("q", "").strip()
+    if query_text:
+        parsed = parse_natural_language(query_text, now)
+        resource_type = str(parsed["type"])
+        attendees_value = str(parsed["attendees"])
+        equipment_value = ", ".join(parsed["equipment"])
+        start_value = f"{parsed['date']}T{parsed['start_time']}"
+        end_value = f"{parsed['date']}T{parsed['end_time']}"
+    else:
+        resource_type = web_request.query_params.get("type", "lab")
+        attendees_value = web_request.query_params.get("attendees", "18")
+        equipment_value = web_request.query_params.get("equipment", "")
+        start_value = web_request.query_params.get(
+            "start", default_start.strftime("%Y-%m-%dT%H:%M")
+        )
+        end_value = web_request.query_params.get(
+            "end", (default_start + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
+        )
     try:
-        attendees = max(1, int(web_request.query_params.get("attendees", "18")))
+        attendees = max(1, int(attendees_value))
         start_dt = parse_dt(start_value)
         end_dt = parse_dt(end_value)
         if end_dt <= start_dt:
@@ -102,6 +115,7 @@ def resources(web_request: WebRequest, db: Session = Depends(get_db)):
             "results": results,
             "message": message,
             "error": error,
+            "query_text": query_text,
             "filters": {
                 "type": resource_type,
                 "attendees": attendees,
