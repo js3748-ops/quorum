@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Utilization / Quorum{% endblock %}
+{% block content %}
+<section class="page-head split">
+  <div>
+    <p class="kicker">{{ dashboard.week_start.strftime("%d %b") }}-{{ dashboard.week_last_day.strftime("%d %b %Y") }}</p>
+    <h1>Utilization</h1>
+    <p>Booking pressure across campus for the current week.</p>
+  </div>
+  <dl class="usage-extremes">
+    <div><dt>Most used</dt><dd>{{ dashboard.most_used.resource.name }}<br><span class="mono">{{ "%.1f"|format(dashboard.most_used.booked_hours) }}h</span></dd></div>
+    <div><dt>Least used</dt><dd>{{ dashboard.least_used.resource.name }}<br><span class="mono">{{ "%.1f"|format(dashboard.least_used.booked_hours) }}h</span></dd></div>
+  </dl>
+</section>
+
+<section class="metric-band" aria-label="Request status counts">
+  {% for status in ["pending", "approved", "rejected"] %}
+  <div><span class="metric-number">{{ dashboard.counts[status] }}</span><span class="status status-{{ status }}">{{ status }}</span></div>
+  {% endfor %}
+</section>
+
+<section class="rule-section">
+  <div class="split section-title"><h2>Peak hours</h2><p>Share of active resources booked</p></div>
+  <div class="peak-grid" style="--slot-count: {{ dashboard.slot_labels|length }}">
+    <div></div>
+    {% for label in dashboard.slot_labels %}<div class="peak-time">{% if loop.index0 % 4 == 0 %}{{ label }}{% endif %}</div>{% endfor %}
+    {% for row in dashboard.peak_rows %}
+      <div class="peak-day">{{ row.day }}</div>
+      {% for cell in row.cells %}
+      <div class="peak-cell" style="--intensity: {{ cell.intensity }}" title="{{ cell.label }} / {{ cell.booked_count }} resources / {{ cell.percent }}%"></div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+  <p class="grid-legend"><span>Quiet</span><span class="legend-scale" aria-hidden="true"></span><span>Busy</span></p>
+</section>
+
+<section class="rule-section">
+  <h2>Zones</h2>
+  <table>
+    <thead><tr><th>Zone</th><th>Booked</th><th>Open</th><th>Utilization</th></tr></thead>
+    <tbody>
+      {% for item in dashboard.zone_rows %}
+      <tr>
+        <td>{{ item.zone.name }}<br><span class="muted">{{ item.zone.building }}</span></td>
+        <td class="mono">{{ "%.1f"|format(item.booked_hours) }}h</td>
+        <td class="mono">{{ "%.0f"|format(item.open_hours) }}h</td>
+        <td class="utilization-cell"><span class="mono">{{ item.percent }}%</span><span class="load-track"><span style="width: {{ item.percent }}%"></span></span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="rule-section">
+  <h2>Resources</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Resource</th><th>Zone</th><th>Booked</th><th>Open</th><th>Utilization</th></tr></thead>
+      <tbody>
+        {% for item in dashboard.resource_rows %}
+        <tr>
+          <td><a href="/resources/{{ item.resource.id }}">{{ item.resource.name }}</a></td>
+          <td>{{ item.resource.zone.name }}</td>
+          <td class="mono">{{ "%.1f"|format(item.booked_hours) }}h</td>
+          <td class="mono">{{ "%.0f"|format(item.open_hours) }}h</td>
+          <td class="utilization-cell"><span class="mono">{{ item.percent }}%</span><span class="load-track"><span style="width: {{ item.percent }}%"></span></span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

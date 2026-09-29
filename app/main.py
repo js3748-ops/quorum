@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time, timedelta
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request as WebRequest, Response
 from fastapi.responses import RedirectResponse
@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.analytics import current_week_dashboard, ranked_resources
 from app.database import get_db, init_db
 from app.models import Request, Resource, Unavailability, User, Zone
 from app.services import (
@@ -64,15 +65,61 @@ def switch_user(user_id: int = Form(...)):
 
 @app.get("/resources")
 def resources(web_request: WebRequest, db: Session = Depends(get_db)):
-    resources = db.scalars(
-        select(Resource).options(joinedload(Resource.zone)).order_by(Resource.status, Resource.name)
-    ).all()
+    now = datetime.now()
+    week_start = datetime.combine((now - timedelta(days=now.weekday())).date(), time.min)
+    default_start = week_start + timedelta(days=2, hours=10)
+    start_value = web_request.query_params.get("start", default_start.strftime("%Y-%m-%dT%H:%M"))
+    end_value = web_request.query_params.get(
+        "end", (default_start + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
+    )
+    resource_type = web_request.query_params.get("type", "lab")
+    equipment_value = web_request.query_params.get("equipment", "")
+    try:
+        attendees = max(1, int(web_request.query_params.get("attendees", "18")))
+        start_dt = parse_dt(start_value)
+        end_dt = parse_dt(end_value)
+        if end_dt <= start_dt:
+            raise ValueError
+        equipment = [item.strip() for item in equipment_value.split(",") if item.strip()]
+        results = ranked_resources(
+            db,
+            resource_type=resource_type,
+            attendees=attendees,
+            equipment=equipment,
+            start=start_dt,
+            end=end_dt,
+        )
+        error = web_request.query_params.get("error")
+    except ValueError:
+        results = []
+        attendees = 18
+        error = "Choose a valid time range."
     message = web_request.query_params.get("message")
-    error = web_request.query_params.get("error")
     return render(
         web_request,
         "resources.html",
-        {"resources": resources, "message": message, "error": error},
+        {
+            "results": results,
+            "message": message,
+            "error": error,
+            "filters": {
+                "type": resource_type,
+                "attendees": attendees,
+                "equipment": equipment_value,
+                "start": start_value,
+                "end": end_value,
+            },
+        },
+        db,
+    )
+
+
+@app.get("/dashboard")
+def dashboard(web_request: WebRequest, db: Session = Depends(get_db)):
+    return render(
+        web_request,
+        "dashboard.html",
+        {"dashboard": current_week_dashboard(db)},
         db,
     )
 

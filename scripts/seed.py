@@ -110,9 +110,38 @@ def main():
             ]
         )
 
+        demo_start = start_of_week + timedelta(days=2, hours=10)
+        demo_end = demo_start + timedelta(hours=1)
+        peak_specs = [
+            (resources[0], 34, "Advanced AI lab"),
+            (resources[1], 30, "Systems practical"),
+            (resources[3], 65, "Core lecture"),
+            (resources[4], 84, "Department seminar"),
+        ]
+        for index, (resource, attendees, purpose) in enumerate(peak_specs):
+            req = Request(
+                user_id=users[index % len(users[:-1])].id,
+                resource_id=resource.id,
+                start=demo_start,
+                end=demo_end,
+                attendees=attendees,
+                purpose=purpose,
+                status="pending" if index == 0 else "approved",
+            )
+            db.add(req)
+            db.flush()
+            for slot_start in slots_between(demo_start, demo_end):
+                db.add(
+                    BookingSlot(
+                        request_id=req.id,
+                        resource_id=resource.id,
+                        slot_start=slot_start,
+                    )
+                )
+
         busy_resources = resources[:5]
         other_resources = resources[5:]
-        booking_count = 0
+        booking_count = len(peak_specs)
         attempts = 0
         while booking_count < 60 and attempts < 500:
             attempts += 1
@@ -124,6 +153,8 @@ def main():
             start = start_of_week + timedelta(days=day, hours=hour, minutes=minute)
             end = start + timedelta(minutes=30 * duration_slots)
             if end.time() > resource.close_time:
+                continue
+            if start < demo_end and end > demo_start:
                 continue
             slot_values = slots_between(start, end)
             existing = {
@@ -157,10 +188,27 @@ def main():
                 )
             booking_count += 1
 
+        for index in range(4):
+            rejected_start = start_of_week + timedelta(days=index, hours=18)
+            db.add(
+                Request(
+                    user_id=users[index].id,
+                    resource_id=resources[10 + index].id,
+                    start=rejected_start,
+                    end=rejected_start + timedelta(hours=1),
+                    attendees=10 + index,
+                    purpose="Declined event request",
+                    status="rejected",
+                    decided_by=users[-1].id,
+                    decided_at=start_of_week,
+                    rejection_note="Seeded dashboard example",
+                )
+            )
+
         db.commit()
         print(
             f"Seeded {len(zones)} zones, {len(resources)} resources, "
-            f"{len(users)} users, and {booking_count} bookings."
+            f"{len(users)} users, {booking_count} bookings, and 4 rejected requests."
         )
     finally:
         db.close()
