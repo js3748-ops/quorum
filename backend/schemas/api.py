@@ -86,9 +86,12 @@ class BookingRequestResponse(ORMModel):
     purpose: str
     status: str
     decided_by: int | None
+    decider: RequestUserResponse | None
     decided_at: datetime | None
     rejection_note: str | None
     created_at: datetime
+
+
 class BookingCreate(BaseModel):
     resource_id: int
     start: datetime

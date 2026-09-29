@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.models import BookingSlot, Request, Resource, Unavailability
 
 SLOT_MINUTES = 30
+INDIA_TIMEZONE = timezone(timedelta(hours=5, minutes=30), name="Asia/Kolkata")
 
 
 def parse_dt(value: str) -> datetime:
@@ -132,7 +133,7 @@ def decide_request(
 
     booking_request.status = decision
     booking_request.decided_by = admin_id
-    booking_request.decided_at = datetime.now()
+    booking_request.decided_at = datetime.now(INDIA_TIMEZONE).replace(tzinfo=None)
     booking_request.rejection_note = rejection_note.strip() or None
     if decision == "rejected":
         db.execute(delete(BookingSlot).where(BookingSlot.request_id == booking_request.id))

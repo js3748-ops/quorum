@@ -10,16 +10,22 @@ const escapeHtml = (value = "") =>
 
 const readable = (value = "") => String(value).replaceAll("_", " ");
 const localInput = (value) => String(value).slice(0, 16);
+const indiaDate = (value) => {
+  const text = String(value);
+  const hasOffset = /(?:Z|[+-]\d{2}:\d{2})$/.test(text);
+  return new Date(hasOffset ? text : `${text}+05:30`);
+};
 const shortDate = (value) => new Intl.DateTimeFormat("en-GB", {
-  weekday: "short", day: "2-digit", month: "short",
-}).format(new Date(value));
+  weekday: "short", day: "2-digit", month: "short", timeZone: "Asia/Kolkata",
+}).format(indiaDate(value));
 const fullDate = (value) => new Intl.DateTimeFormat("en-GB", {
-  weekday: "long", day: "2-digit", month: "long", year: "numeric",
-}).format(new Date(value));
+  weekday: "long", day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Kolkata",
+}).format(indiaDate(value));
 const clock = (value) => String(value).slice(11, 16);
 const decisionTime = (value) => value ? new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
-}).format(new Date(value)) : "";
+  day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+  timeZone: "Asia/Kolkata",
+}).format(indiaDate(value)) : "";
 
 function showError(message) {
   const host = document.querySelector("#messages");
@@ -89,9 +95,14 @@ function statusLabel(status) {
 }
 
 function requestDecision(item) {
-  if (item.status === "rejected" && item.rejection_note) return escapeHtml(item.rejection_note);
-  if (item.decided_at) return `<span class="mono">${escapeHtml(decisionTime(item.decided_at))}</span>`;
   if (item.status === "pending") return `<span class="muted">Awaiting review</span>`;
+  if (["approved", "rejected"].includes(item.status) && item.decider && item.decided_at) {
+    const action = item.status === "approved" ? "Approved" : "Rejected";
+    const note = item.status === "rejected" && item.rejection_note
+      ? `<br><span class="muted">Note: ${escapeHtml(item.rejection_note)}</span>`
+      : "";
+    return `${action} by ${escapeHtml(item.decider.name)} &middot; <span class="mono">${escapeHtml(decisionTime(item.decided_at))}</span>${note}`;
+  }
   return `<span class="muted">Automatically approved</span>`;
 }
 
