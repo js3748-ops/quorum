@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.analytics import current_week_dashboard, ranked_resources
-from app.database import get_db, init_db
+from app.database import SessionLocal, get_db, init_db
 from app.models import Request, Resource, Unavailability, User, Zone
 from app.natural_language import parse_natural_language
 from app.services import (
@@ -23,6 +23,11 @@ from app.services import (
 app = FastAPI(title="Quorum")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["readable"] = lambda value: str(value).replace("_", " ")
+
+
+class AdminOnlyError(Exception):
+    pass
 
 
 @app.on_event("startup")
@@ -39,17 +44,32 @@ def current_user(web_request: WebRequest, db: Session) -> User | None:
     return db.scalars(select(User).order_by(User.id)).first()
 
 
-def render(web_request: WebRequest, template: str, context: dict, db: Session):
+def render(
+    web_request: WebRequest,
+    template: str,
+    context: dict,
+    db: Session,
+    status_code: int = 200,
+):
     users = db.scalars(select(User).order_by(User.role, User.name)).all()
     user = current_user(web_request, db)
     base = {"request": web_request, "users": users, "current_user": user}
     base.update(context)
-    return templates.TemplateResponse(template, base)
+    return templates.TemplateResponse(template, base, status_code=status_code)
 
 
 def require_admin(user: User | None):
     if not user or user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise AdminOnlyError
+
+
+@app.exception_handler(AdminOnlyError)
+def admin_only_page(web_request: WebRequest, _error: AdminOnlyError):
+    db = SessionLocal()
+    try:
+        return render(web_request, "forbidden.html", {}, db, status_code=403)
+    finally:
+        db.close()
 
 
 @app.get("/")
@@ -191,6 +211,11 @@ def create_request(
         purpose=purpose,
     )
     if conflict:
+        outside_open_hours = (
+            start_dt.date() != end_dt.date()
+            or start_dt.time() < resource.open_time
+            or end_dt.time() > resource.close_time
+        )
         alternatives = suggest_alternatives(db, resource, start_dt, end_dt, attendees)
         return render(
             web_request,
@@ -202,6 +227,7 @@ def create_request(
                 "attendees": attendees,
                 "purpose": purpose,
                 "conflict": conflict,
+                "conflict_title": "Outside open hours" if outside_open_hours else "Conflict",
                 "alternatives": alternatives,
             },
             db,

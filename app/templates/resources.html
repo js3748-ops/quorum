@@ -45,7 +45,7 @@
         <td><a href="/resources/{{ item.resource.id }}">{{ item.resource.name }}</a><br><span class="muted">{{ item.resource.type.replace("_", " ") }}</span></td>
         <td>{{ item.resource.zone.name }}</td>
         <td class="mono">{{ item.resource.capacity }}</td>
-        <td>{{ ", ".join(item.resource.equipment) }}</td>
+        <td>{{ item.resource.equipment|map("readable")|join(", ") }}</td>
         <td class="load-cell {% if item.zone_load > 0.6 %}overloaded{% elif item.zone_load <= 0.3 %}quiet{% endif %}">
           <span class="mono">{{ item.load_percent }}%</span>
           <span class="load-track" aria-hidden="true"><span style="width: {{ item.bar_width }}%"></span></span>

@@ -39,7 +39,7 @@
   <details class="resource-editor">
     <summary>
       <span>{{ resource.name }}</span>
-      <span class="mono">{{ resource.zone.name }} / {{ resource.capacity }} / {{ resource.status }}</span>
+      <span class="mono">{{ resource.zone.name }} / {{ resource.capacity }}{% if resource.status == "maintenance" %} / maintenance{% endif %}</span>
     </summary>
     <form class="grid-form" action="/admin/resources/{{ resource.id }}" method="post">
       <label>Name<input name="name" value="{{ resource.name }}" required></label>

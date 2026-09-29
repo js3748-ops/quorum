@@ -149,25 +149,30 @@ def nearest_free_times(
     limit: int = 3,
 ) -> list[dict[str, object]]:
     duration = end - start
-    options = []
-    offsets = [30, -30, 60, -60, 90, -90, 120, -120, 180, -180, 240, -240]
-    for minutes in offsets:
-        candidate_start = start + timedelta(minutes=minutes)
+    if duration <= timedelta(0):
+        return []
+
+    day = start.date()
+    first_start = datetime.combine(day, resource.open_time)
+    latest_start = datetime.combine(day, resource.close_time) - duration
+    candidates = []
+    candidate_start = first_start
+    while candidate_start <= latest_start:
         candidate_end = candidate_start + duration
-        if candidate_start.date() != start.date():
-            continue
         if not find_conflict(db, resource, candidate_start, candidate_end):
-            options.append(
-                {
-                    "resource": resource,
-                    "start": candidate_start,
-                    "end": candidate_end,
-                    "kind": "Same resource",
-                }
-            )
-        if len(options) >= limit:
-            break
-    return options
+            candidates.append((abs(candidate_start - start), candidate_start, candidate_end))
+        candidate_start += timedelta(minutes=SLOT_MINUTES)
+
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return [
+        {
+            "resource": resource,
+            "start": candidate_start,
+            "end": candidate_end,
+            "kind": "Same resource",
+        }
+        for _, candidate_start, candidate_end in candidates[:limit]
+    ]
 
 
 def similar_resources(
@@ -201,6 +206,12 @@ def similar_resources(
                     "kind": "Similar resource",
                 }
             )
+        else:
+            nearest = nearest_free_times(db, candidate, start, end, limit=1)
+            if nearest:
+                option = nearest[0]
+                option["kind"] = "Similar resource"
+                matches.append(option)
         if len(matches) >= limit:
             break
     return matches
@@ -213,10 +224,19 @@ def suggest_alternatives(
     end: datetime,
     attendees: int,
 ) -> list[dict[str, object]]:
-    suggestions = nearest_free_times(db, resource, start, end, limit=3)
+    suggestions = nearest_free_times(db, resource, start, end, limit=2)
     remaining = 3 - len(suggestions)
     if remaining > 0:
         suggestions.extend(similar_resources(db, resource, start, end, attendees, remaining))
+    if len(suggestions) < 3:
+        seen = {(item["resource"].id, item["start"]) for item in suggestions}
+        for option in nearest_free_times(db, resource, start, end, limit=3):
+            key = (option["resource"].id, option["start"])
+            if key not in seen:
+                suggestions.append(option)
+                seen.add(key)
+            if len(suggestions) == 3:
+                break
     return suggestions[:3]
 
 

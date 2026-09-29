@@ -5,10 +5,10 @@
   <div>
     <p class="kicker">{{ resource.type.replace("_", " ") }} / {{ resource.zone.name }}</p>
     <h1>{{ resource.name }}</h1>
-    <p>{{ resource.capacity }} seats. {{ ", ".join(resource.equipment) }}. Open <span class="mono">{{ resource.open_time.strftime("%H:%M") }}-{{ resource.close_time.strftime("%H:%M") }}</span>.</p>
+    <p>{{ resource.capacity }} seats. {{ resource.equipment|map("readable")|join(", ") }}. Open <span class="mono">{{ resource.open_time.strftime("%H:%M") }}-{{ resource.close_time.strftime("%H:%M") }}</span>.</p>
   </div>
   <div class="status-block">
-    <span class="status">{{ resource.status }}</span>
+    {% if resource.status == "maintenance" %}<span class="status">maintenance</span>{% endif %}
     {% if resource.requires_approval %}<span class="status">approval required</span>{% else %}<span class="status">instant approval</span>{% endif %}
   </div>
 </section>

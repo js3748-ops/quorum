@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Conflict / Quorum{% endblock %}
+{% block title %}{{ conflict_title }} / Quorum{% endblock %}
 {% block content %}
-<section class="page-head">
-  <p class="kicker">Conflict</p>
+<section class="page-head conflict-head">
+  <p class="kicker">{{ conflict_title }}</p>
   <h1>{{ resource.name }}</h1>
-  <p class="error">{{ conflict }}</p>
+  <p class="conflict-reason">{{ conflict }}</p>
 </section>
 
-<section class="rule-section">
+<section class="conflict-options">
   <h2>Alternatives</h2>
   {% if alternatives %}
   <table>
