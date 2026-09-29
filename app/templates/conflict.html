@@ -23,6 +23,7 @@
         <td class="mono">{{ option.resource.capacity }}</td>
         <td>
           <form action="/requests" method="post" class="inline">
+            <input type="hidden" name="acting_user_id" value="{{ current_user.id }}">
             <input type="hidden" name="resource_id" value="{{ option.resource.id }}">
             <input type="hidden" name="start" value="{{ option.start.strftime("%Y-%m-%dT%H:%M") }}">
             <input type="hidden" name="end" value="{{ option.end.strftime("%Y-%m-%dT%H:%M") }}">

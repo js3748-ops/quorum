@@ -7,6 +7,12 @@
   <p>Booking requests and their current decisions.</p>
 </section>
 
+<nav class="filter-tabs" aria-label="Request status">
+  {% for status in ["all", "pending", "approved", "rejected"] %}
+  <a href="/my-requests?status={{ status }}" {% if status_filter == status %}aria-current="page"{% endif %}>{{ status }}</a>
+  {% endfor %}
+</nav>
+
 {% if requests %}
 <div class="table-scroll">
   <table>
@@ -15,7 +21,7 @@
     </thead>
     <tbody>
       {% for item in requests %}
-      <tr>
+      <tr id="request-{{ item.id }}">
         <td class="mono">#{{ item.id }}</td>
         <td><a href="/resources/{{ item.resource.id }}">{{ item.resource.name }}</a><br><span class="muted">{{ item.resource.zone.name }}</span></td>
         <td class="mono">{{ item.start.strftime("%a %d %b") }}<br>{{ item.start.strftime("%H:%M") }}-{{ item.end.strftime("%H:%M") }}</td>

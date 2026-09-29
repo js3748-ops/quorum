@@ -22,6 +22,7 @@
         {% endif %}
       </nav>
       <form class="switcher" action="/switch-user" method="post">
+        <input type="hidden" name="next_path" value="{{ request.url.path }}">
         <label for="user_id">Acting as</label>
         <select id="user_id" name="user_id" onchange="this.form.submit()">
           {% for user in users %}

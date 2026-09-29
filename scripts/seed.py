@@ -46,6 +46,13 @@ def main():
         db.add_all(users)
         db.flush()
 
+        background_users = [
+            User(name=f"Background Demand {index}", role="background")
+            for index in range(1, 7)
+        ]
+        db.add_all(background_users)
+        db.flush()
+
         resource_specs = [
             ("AI Lab 201", "lab", 0, 36, ["projector", "linux", "gpu"], True),
             ("Systems Lab 204", "lab", 0, 32, ["linux", "projector"], True),
@@ -120,7 +127,7 @@ def main():
         ]
         for index, (resource, attendees, purpose) in enumerate(peak_specs):
             req = Request(
-                user_id=users[index % len(users[:-1])].id,
+                user_id=background_users[index % len(background_users)].id,
                 resource_id=resource.id,
                 start=demo_start,
                 end=demo_end,
@@ -166,7 +173,7 @@ def main():
             if existing:
                 continue
             req = Request(
-                user_id=random.choice(users[:-1]).id,
+                user_id=random.choice(background_users).id,
                 resource_id=resource.id,
                 start=start,
                 end=end,
@@ -192,7 +199,7 @@ def main():
             rejected_start = start_of_week + timedelta(days=index, hours=18)
             db.add(
                 Request(
-                    user_id=users[index].id,
+                    user_id=background_users[index].id,
                     resource_id=resources[10 + index].id,
                     start=rejected_start,
                     end=rejected_start + timedelta(hours=1),
@@ -208,7 +215,8 @@ def main():
         db.commit()
         print(
             f"Seeded {len(zones)} zones, {len(resources)} resources, "
-            f"{len(users)} users, {booking_count} bookings, and 4 rejected requests."
+            f"{len(users)} demo users, {len(background_users)} hidden background users, "
+            f"{booking_count} bookings, and 4 rejected requests."
         )
     finally:
         db.close()

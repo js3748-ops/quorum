@@ -53,6 +53,7 @@
         <td>{{ item.reason }}</td>
         <td>
           <form action="/requests" method="post">
+            <input type="hidden" name="acting_user_id" value="{{ current_user.id }}">
             <input type="hidden" name="resource_id" value="{{ item.resource.id }}">
             <input type="hidden" name="start" value="{{ filters.start }}">
             <input type="hidden" name="end" value="{{ filters.end }}">

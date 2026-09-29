@@ -1,6 +1,6 @@
 from datetime import datetime, time, timedelta
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request as WebRequest, Response
+from fastapi import Depends, FastAPI, Form, HTTPException, Request as WebRequest
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -39,9 +39,24 @@ def current_user(web_request: WebRequest, db: Session) -> User | None:
     user_id = web_request.cookies.get("user_id")
     if user_id and user_id.isdigit():
         user = db.get(User, int(user_id))
-        if user:
+        if user and user.role != "background":
             return user
-    return db.scalars(select(User).order_by(User.id)).first()
+    return db.scalars(
+        select(User).where(User.role != "background").order_by(User.id)
+    ).first()
+
+
+def booking_user(web_request: WebRequest, db: Session, acting_user_id: int | None) -> User | None:
+    cookie_id = web_request.cookies.get("user_id")
+    if cookie_id and cookie_id.isdigit():
+        user = db.get(User, int(cookie_id))
+        if user and user.role != "background":
+            return user
+    if acting_user_id:
+        user = db.get(User, acting_user_id)
+        if user and user.role != "background":
+            return user
+    return None
 
 
 def render(
@@ -51,7 +66,9 @@ def render(
     db: Session,
     status_code: int = 200,
 ):
-    users = db.scalars(select(User).order_by(User.role, User.name)).all()
+    users = db.scalars(
+        select(User).where(User.role != "background").order_by(User.role, User.name)
+    ).all()
     user = current_user(web_request, db)
     base = {"request": web_request, "users": users, "current_user": user}
     base.update(context)
@@ -78,9 +95,23 @@ def home(web_request: WebRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/switch-user")
-def switch_user(user_id: int = Form(...)):
-    response = RedirectResponse("/resources", status_code=303)
-    response.set_cookie("user_id", str(user_id), max_age=60 * 60 * 24 * 7)
+def switch_user(
+    user_id: int = Form(...),
+    next_path: str = Form("/resources"),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if not user or user.role == "background":
+        raise HTTPException(status_code=400, detail="Invalid acting user")
+    target = next_path if next_path.startswith("/") and not next_path.startswith("//") else "/resources"
+    response = RedirectResponse(target, status_code=303)
+    response.set_cookie(
+        "user_id",
+        str(user.id),
+        max_age=60 * 60 * 24 * 7,
+        path="/",
+        samesite="lax",
+    )
     return response
 
 
@@ -185,15 +216,15 @@ def resource_detail(resource_id: int, web_request: WebRequest, db: Session = Dep
 @app.post("/requests")
 def create_request(
     web_request: WebRequest,
-    response: Response,
     resource_id: int = Form(...),
     start: str = Form(...),
     end: str = Form(...),
     attendees: int = Form(...),
     purpose: str = Form(""),
+    acting_user_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    user = current_user(web_request, db)
+    user = booking_user(web_request, db, acting_user_id)
     if not user:
         return RedirectResponse("/resources?error=Seed users before booking.", status_code=303)
     resource = db.get(Resource, resource_id)
@@ -262,13 +293,24 @@ def my_requests(web_request: WebRequest, db: Session = Depends(get_db)):
     user = current_user(web_request, db)
     if not user:
         raise HTTPException(status_code=404, detail="Seed users before viewing requests")
-    requests = db.scalars(
+    status_filter = web_request.query_params.get("status", "all")
+    if status_filter not in {"all", "pending", "approved", "rejected"}:
+        status_filter = "all"
+    query = (
         select(Request)
         .where(Request.user_id == user.id)
         .options(joinedload(Request.resource).joinedload(Resource.zone))
-        .order_by(Request.created_at.desc())
-    ).all()
-    return render(web_request, "my_requests.html", {"requests": requests}, db)
+        .order_by(Request.created_at.desc(), Request.id.desc())
+    )
+    if status_filter != "all":
+        query = query.where(Request.status == status_filter)
+    requests = db.scalars(query).all()
+    return render(
+        web_request,
+        "my_requests.html",
+        {"requests": requests, "status_filter": status_filter},
+        db,
+    )
 
 
 @app.get("/admin/requests")

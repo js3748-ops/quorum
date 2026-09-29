@@ -16,6 +16,7 @@
 <section class="rule-section">
   <h2>Request</h2>
   <form class="grid-form" action="/requests" method="post">
+    <input type="hidden" name="acting_user_id" value="{{ current_user.id }}">
     <input type="hidden" name="resource_id" value="{{ resource.id }}">
     <label>Start
       <input name="start" type="datetime-local" step="1800" required>

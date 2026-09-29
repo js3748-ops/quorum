@@ -421,6 +421,28 @@ dd {
   overflow-x: auto;
 }
 
+.filter-tabs {
+  display: flex;
+  gap: 18px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 16px;
+}
+
+.filter-tabs a {
+  color: var(--muted);
+  padding: 0 0 9px;
+  text-decoration: none;
+}
+
+.filter-tabs a[aria-current="page"] {
+  border-bottom: 2px solid var(--accent);
+  color: var(--ink);
+}
+
+tr:target td {
+  background: rgba(94, 107, 69, 0.08);
+}
+
 .results-head {
   align-items: baseline;
 }
