@@ -89,9 +89,6 @@ class BookingRequestResponse(ORMModel):
     decided_at: datetime | None
     rejection_note: str | None
     created_at: datetime
-    auto_approval_label: str | None = None
-
-
 class BookingCreate(BaseModel):
     resource_id: int
     start: datetime

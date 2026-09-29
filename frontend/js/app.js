@@ -89,7 +89,6 @@ function statusLabel(status) {
 }
 
 function requestDecision(item) {
-  if (item.auto_approval_label) return escapeHtml(item.auto_approval_label);
   if (item.status === "rejected" && item.rejection_note) return escapeHtml(item.rejection_note);
   if (item.decided_at) return `<span class="mono">${escapeHtml(decisionTime(item.decided_at))}</span>`;
   if (item.status === "pending") return `<span class="muted">Awaiting review</span>`;
@@ -224,7 +223,7 @@ async function resourcePage() {
     const resource = data.resource;
     document.title = `${resource.name} / Quorum`;
     document.querySelector("#resource-content").innerHTML = `
-      <section class="page-head split"><div><p class="kicker">${escapeHtml(readable(resource.type))} / ${escapeHtml(resource.zone.name)}</p><h1>${escapeHtml(resource.name)}</h1><p>${resource.capacity} seats. ${resource.equipment.map(readable).map(escapeHtml).join(", ")}. Open <span class="mono">${clock(`0000-00-00T${resource.open_time}`)}-${clock(`0000-00-00T${resource.close_time}`)}</span>.</p></div><div class="status-block">${resource.status === "maintenance" ? '<span class="status">maintenance</span>' : ""}<span class="status">${resource.requires_approval ? "approval required" : "instant approval"}</span></div></section>
+      <section class="page-head split"><div><p class="kicker">${escapeHtml(readable(resource.type))} / ${escapeHtml(resource.zone.name)}</p><h1>${escapeHtml(resource.name)}</h1><p>${resource.capacity} seats. ${resource.equipment.map(readable).map(escapeHtml).join(", ")}. Open <span class="mono">${clock(`0000-00-00T${resource.open_time}`)}-${clock(`0000-00-00T${resource.close_time}`)}</span>.</p></div>${resource.status === "maintenance" ? '<div class="status-block"><span class="status">maintenance</span></div>' : ""}</section>
       <section class="rule-section"><h2>Request</h2><form class="grid-form" data-booking><input type="hidden" name="resource_id" value="${resource.id}"><label>Start<input name="start" type="datetime-local" step="1800" required></label><label>End<input name="end" type="datetime-local" step="1800" required></label><label>Attendees<input name="attendees" type="number" min="1" max="${resource.capacity}" value="8" required></label><label>Purpose<input name="purpose" placeholder="Seminar prep"></label><p class="request-outcome">${escapeHtml(data.approval_message)}</p><button type="submit">Request slot</button></form></section>
       <section class="rule-section"><h2>Unavailable</h2>${data.unavailability.length ? `<ul class="plain-list">${data.unavailability.map((item) => `<li><span class="mono">${shortDate(item.start)} ${clock(item.start)}-${clock(item.end)}</span> ${escapeHtml(item.reason)}</li>`).join("")}</ul>` : "<p>No maintenance windows listed.</p>"}</section>
       <section class="rule-section"><h2>Recent Requests</h2><div class="table-scroll"><table><thead><tr><th>When</th><th>User</th><th>Attendees</th><th>Status</th></tr></thead><tbody>${data.recent_requests.map((item) => `<tr><td class="mono">${shortDate(item.start)} ${clock(item.start)}-${clock(item.end)}</td><td>${escapeHtml(item.user.name)}</td><td class="mono">${item.attendees}</td><td>${statusLabel(item.status)}</td></tr>`).join("")}</tbody></table></div></section>`;

@@ -79,7 +79,6 @@ def create_booking_request(
     db: Session,
     *,
     user_id: int,
-    user_role: str,
     resource: Resource,
     start: datetime,
     end: datetime,
@@ -90,10 +89,6 @@ def create_booking_request(
     if conflict:
         return None, conflict
 
-    needs_approval = user_role == "student" or (
-        user_role == "faculty" and resource.requires_approval
-    )
-    status = "pending" if needs_approval else "approved"
     request = Request(
         user_id=user_id,
         resource_id=resource.id,
@@ -101,7 +96,7 @@ def create_booking_request(
         end=end,
         attendees=attendees,
         purpose=purpose.strip() or "Booking",
-        status=status,
+        status="pending",
     )
     db.add(request)
     db.flush()

@@ -3,17 +3,11 @@ from backend.schemas import BookingRequestResponse, ResourceResponse
 
 
 def approval_message(user: User, resource: Resource) -> str:
-    if user.role == "student" or (user.role == "faculty" and resource.requires_approval):
-        return "This request will need admin approval."
-    return "This will be approved immediately."
+    return "This request will need admin approval."
 
 
 def request_response(item: Request) -> BookingRequestResponse:
-    label = None
-    if item.status == "approved" and item.user.role == "faculty" and not item.decided_by:
-        label = "Auto-approved (faculty)"
-    response = BookingRequestResponse.model_validate(item)
-    return response.model_copy(update={"auto_approval_label": label})
+    return BookingRequestResponse.model_validate(item)
 
 
 def resource_response(resource: Resource) -> ResourceResponse:

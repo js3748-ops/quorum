@@ -35,7 +35,6 @@ def create_request(
     created, conflict = create_booking_request(
         db,
         user_id=user.id,
-        user_role=user.role,
         resource=resource,
         start=payload.start,
         end=payload.end,
