@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -14,6 +14,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
 from backend.database import Base
+
+
+INDIA_TIMEZONE = timezone(timedelta(hours=5, minutes=30), name="Asia/Kolkata")
+
+
+def india_now() -> datetime:
+    return datetime.now(INDIA_TIMEZONE).replace(tzinfo=None)
 
 
 class Zone(Base):
@@ -37,6 +44,12 @@ class User(Base):
     password_salt: Mapped[str | None] = mapped_column(String(32), nullable=True)
     role: Mapped[str] = mapped_column(String(30), nullable=False, default="student")
     is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    department: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    id_number: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True)
+    year_of_study: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    designation: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    admin_scope: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    member_since: Mapped[datetime] = mapped_column(DateTime, default=india_now, nullable=False)
 
 
 class Resource(Base):
@@ -86,6 +99,8 @@ class Request(Base):
     decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rejection_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime, default=india_now, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     user: Mapped[User] = relationship(foreign_keys=[user_id])

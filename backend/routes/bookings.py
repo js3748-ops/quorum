@@ -7,7 +7,15 @@ from backend.models import Request, Resource
 from backend.routes.dependencies import get_current_user
 from backend.routes.helpers import request_response, resource_response
 from backend.schemas import BookingCreate, BookingRequestResponse, RequestListResponse
-from backend.services.booking import create_booking_request, suggest_alternatives
+from backend.services.booking import (
+    MAX_PENDING_REQUESTS,
+    cancel_request,
+    create_booking_request,
+    expire_pending_requests,
+    reserve_pending_capacity,
+    suggest_alternatives,
+    validate_booking_horizon,
+)
 
 
 router = APIRouter(prefix="/api", tags=["Bookings"])
@@ -25,6 +33,15 @@ def create_request(
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    expire_pending_requests(db)
+    horizon_error = validate_booking_horizon(payload.start, payload.end)
+    if horizon_error:
+        raise HTTPException(status_code=400, detail=horizon_error)
+    if not reserve_pending_capacity(db, user.id):
+        raise HTTPException(
+            status_code=409,
+            detail=f"You already have {MAX_PENDING_REQUESTS} pending requests. Wait for a decision or cancel one before booking again.",
+        )
     resource = db.scalars(
         select(Resource)
         .where(Resource.id == payload.resource_id)
@@ -32,6 +49,11 @@ def create_request(
     ).first()
     if not resource:
         raise HTTPException(status_code=404, detail="Resource not found.")
+    if payload.attendees > resource.capacity:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Attendees cannot exceed this resource's capacity of {resource.capacity}.",
+        )
     created, conflict = create_booking_request(
         db,
         user_id=user.id,
@@ -83,6 +105,7 @@ def get_request(
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    expire_pending_requests(db)
     item = db.scalars(
         select(Request)
         .where(Request.id == request_id)
@@ -91,7 +114,33 @@ def get_request(
     if not item:
         raise HTTPException(status_code=404, detail="Request not found.")
     if item.user_id != user.id and user.role != "admin":
-        raise HTTPException(status_code=403, detail="This request belongs to another user.")
+        raise HTTPException(status_code=404, detail="Request not found.")
+    return request_response(item)
+
+
+@router.post(
+    "/requests/{request_id}/cancel",
+    response_model=BookingRequestResponse,
+    summary="Cancel my booking request",
+    description="Cancels an owned pending or future approved request and releases its slots.",
+)
+def cancel_my_request(
+    request_id: int,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    expire_pending_requests(db)
+    item = db.get(Request, request_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    error = cancel_request(db, item)
+    if error:
+        raise HTTPException(status_code=409, detail=error)
+    item = db.scalars(
+        select(Request)
+        .where(Request.id == request_id)
+        .options(joinedload(Request.user), joinedload(Request.resource).joinedload(Resource.zone))
+    ).first()
     return request_response(item)
 
 
@@ -106,7 +155,8 @@ def my_requests(
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = {"all", "pending", "approved", "rejected", "cancelled"}
+    expire_pending_requests(db)
+    allowed = {"all", "pending", "approved", "rejected", "cancelled", "expired"}
     if status not in allowed:
         raise HTTPException(status_code=400, detail="Invalid status filter.")
     query = (

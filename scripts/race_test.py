@@ -57,7 +57,7 @@ def submit(base_url: str, payload: str, barrier: Barrier, session_cookie: str) -
 
 def main() -> None:
     base_url = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
-    day_offset = 35 + int(datetime.now().timestamp()) % 300
+    day_offset = 20 + int(datetime.now().timestamp()) % 8
     race_day = date.today() + timedelta(days=day_offset)
     start = datetime.combine(race_day, time(8, 0))
     end = start + timedelta(minutes=30)
@@ -68,6 +68,7 @@ def main() -> None:
             "end": end.strftime("%Y-%m-%dT%H:%M"),
             "attendees": 4,
             "purpose": "Concurrency race test",
+            "confirmed": True,
         }
     )
     session_cookie = login(base_url)

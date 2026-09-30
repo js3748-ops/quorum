@@ -1,7 +1,10 @@
 from datetime import datetime, time
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+Department = Literal["CSE", "ECE", "EEE", "Mechanical", "Civil", "Biotech", "Other"]
 
 
 class ORMModel(BaseModel):
@@ -17,6 +20,12 @@ class UserResponse(ORMModel):
     name: str
     email: str
     role: Literal["admin", "faculty", "student"]
+    department: Department
+    id_number: str
+    year_of_study: int | None
+    designation: str | None
+    admin_scope: str | None
+    member_since: datetime
 
 
 class AuthResponse(BaseModel):
@@ -37,6 +46,17 @@ class SignupRequest(BaseModel):
     email: str
     password: str = Field(min_length=8)
     role: Literal["faculty", "student"]
+    department: Department
+    id_number: str = Field(min_length=1, max_length=80)
+    year_of_study: int | None = Field(default=None, ge=1, le=4)
+
+    @model_validator(mode="after")
+    def validate_role_fields(self):
+        if self.role == "student" and self.year_of_study is None:
+            raise ValueError("Year of study is required for students.")
+        if self.role == "faculty":
+            self.year_of_study = None
+        return self
 
 
 class ZoneResponse(ORMModel):
@@ -72,6 +92,12 @@ class RequestUserResponse(ORMModel):
     name: str
     role: str
     email: str | None = None
+    department: str | None = None
+    id_number: str | None = None
+    year_of_study: int | None = None
+    designation: str | None = None
+    admin_scope: str | None = None
+    member_since: datetime | None = None
 
 
 class BookingRequestResponse(ORMModel):
@@ -89,6 +115,8 @@ class BookingRequestResponse(ORMModel):
     decider: RequestUserResponse | None
     decided_at: datetime | None
     rejection_note: str | None
+    status_reason: str | None
+    confirmed_at: datetime | None
     created_at: datetime
 
 
@@ -97,7 +125,15 @@ class BookingCreate(BaseModel):
     start: datetime
     end: datetime
     attendees: int = Field(ge=1)
-    purpose: str = ""
+    purpose: str = Field(min_length=15)
+    confirmed: Literal[True]
+
+    @model_validator(mode="after")
+    def validate_purpose(self):
+        self.purpose = self.purpose.strip()
+        if len(self.purpose) < 15:
+            raise ValueError("Purpose must be at least 15 characters.")
+        return self
 
 
 class AlternativeResponse(BaseModel):
@@ -170,6 +206,43 @@ class AdminRequestListResponse(BaseModel):
     requests: list[BookingRequestResponse]
 
 
+class AdminRequestDetailResponse(BaseModel):
+    request: BookingRequestResponse
+    slot_is_free: bool
+    zone_load: float
+    load_percent: int
+
+
+class AdminUserListResponse(BaseModel):
+    users: list[UserResponse]
+
+
+class AdminUserUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: str
+    role: Literal["admin", "faculty", "student"]
+    department: Department
+    id_number: str = Field(min_length=1, max_length=80)
+    year_of_study: int | None = Field(default=None, ge=1, le=4)
+    designation: str | None = Field(default=None, max_length=120)
+    admin_scope: Literal["all", "labs", "facilities"] | None = None
+
+    @model_validator(mode="after")
+    def validate_role_fields(self):
+        if self.role == "student" and self.year_of_study is None:
+            raise ValueError("Year of study is required for students.")
+        if self.role != "student":
+            self.year_of_study = None
+        if self.role == "admin":
+            if not (self.designation or "").strip() or self.admin_scope is None:
+                raise ValueError("Designation and admin scope are required for admins.")
+            self.designation = self.designation.strip()
+        else:
+            self.designation = None
+            self.admin_scope = None
+        return self
+
+
 class ResourceCreate(BaseModel):
     name: str
     type: str
@@ -189,6 +262,7 @@ class UnavailabilityCreate(BaseModel):
     start: datetime
     end: datetime
     reason: str
+    confirmed_request_ids: list[int] | None = None
 
 
 class AdminResourcesResponse(BaseModel):

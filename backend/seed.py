@@ -35,15 +35,17 @@ def main():
         db.flush()
 
         demo_specs = [
-            ("Asha Mehta", "asha@quorum.local", "student"),
-            ("Kabir Rao", "kabir@quorum.local", "student"),
-            ("Nila Shah", "nila@quorum.local", "student"),
-            ("Prof. Ananya Iyer", "ananya@quorum.local", "faculty"),
-            ("Prof. Rohan Das", "rohan@quorum.local", "faculty"),
-            ("Campus Admin", "admin@quorum.local", "admin"),
+            ("Asha Mehta", "asha@quorum.local", "student", "CSE", "2024CSE041", 3, None, None),
+            ("Kabir Rao", "kabir@quorum.local", "student", "Mechanical", "2025ME028", 2, None, None),
+            ("Nila Shah", "nila@quorum.local", "student", "Biotech", "2023BT016", 4, None, None),
+            ("Prof. Ananya Iyer", "ananya@quorum.local", "faculty", "CSE", "FAC-CSE-104", None, None, None),
+            ("Prof. Rohan Das", "rohan@quorum.local", "faculty", "ECE", "FAC-ECE-087", None, None, None),
+            ("Campus Admin", "admin@quorum.local", "admin", "Other", "ADM-001", None, "Campus Admin", "all"),
+            ("Lab Coordinator", "lab.coordinator@quorum.local", "admin", "CSE", "ADM-LAB-002", None, "Lab Coordinator", "labs"),
+            ("Facilities Officer", "facilities@quorum.local", "admin", "Civil", "ADM-FAC-003", None, "Facilities Officer", "facilities"),
         ]
         users = []
-        for name, email, role in demo_specs:
+        for name, email, role, department, id_number, year_of_study, designation, admin_scope in demo_specs:
             password_hash, password_salt = hash_password("demo1234")
             users.append(
                 User(
@@ -53,6 +55,11 @@ def main():
                     password_salt=password_salt,
                     role=role,
                     is_demo=True,
+                    department=department,
+                    id_number=id_number,
+                    year_of_study=year_of_study,
+                    designation=designation,
+                    admin_scope=admin_scope,
                 )
             )
         db.add_all(users)

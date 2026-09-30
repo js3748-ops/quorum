@@ -1,13 +1,66 @@
 from datetime import datetime, time, timedelta, timezone
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from backend.models import BookingSlot, Request, Resource, Unavailability
+from backend.models import BookingSlot, Request, Resource, Unavailability, User
 
 SLOT_MINUTES = 30
+MAX_PENDING_REQUESTS = 3
 INDIA_TIMEZONE = timezone(timedelta(hours=5, minutes=30), name="Asia/Kolkata")
+
+
+def india_now() -> datetime:
+    return datetime.now(INDIA_TIMEZONE).replace(tzinfo=None)
+
+
+def expire_pending_requests(db: Session, now: datetime | None = None) -> int:
+    now = now or india_now()
+    request_ids = list(
+        db.scalars(
+            update(Request)
+            .where(Request.status == "pending", Request.start <= now)
+            .values(status="expired", status_reason="Expired before review")
+            .returning(Request.id)
+            .execution_options(synchronize_session=False)
+        )
+    )
+    if not request_ids:
+        return 0
+    db.execute(delete(BookingSlot).where(BookingSlot.request_id.in_(request_ids)))
+    db.commit()
+    return len(request_ids)
+
+
+def validate_booking_horizon(
+    start: datetime, end: datetime, now: datetime | None = None
+) -> str | None:
+    now = now or india_now()
+    if start < now:
+        return "Bookings cannot start in the past."
+    if start > now + timedelta(days=30) or end > now + timedelta(days=30):
+        return "Bookings can only be made up to 30 days ahead."
+    return None
+
+
+def reserve_pending_capacity(db: Session, user_id: int) -> bool:
+    db.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(id=user_id)
+        .execution_options(synchronize_session=False)
+    )
+    count = len(
+        list(
+            db.scalars(
+                select(Request.id).where(
+                    Request.user_id == user_id, Request.status == "pending"
+                )
+            )
+        )
+    )
+    return count < MAX_PENDING_REQUESTS
 
 
 def parse_dt(value: str) -> datetime:
@@ -96,8 +149,9 @@ def create_booking_request(
         start=start,
         end=end,
         attendees=attendees,
-        purpose=purpose.strip() or "Booking",
+        purpose=purpose.strip(),
         status="pending",
+        confirmed_at=india_now(),
     )
     db.add(request)
     db.flush()
@@ -118,6 +172,30 @@ def create_booking_request(
     return request, None
 
 
+def request_slot_is_free(db: Session, booking_request: Request) -> bool:
+    resource = booking_request.resource
+    if validate_request_window(resource, booking_request.start, booking_request.end):
+        return False
+    unavailable = db.scalars(
+        select(Unavailability).where(
+            Unavailability.resource_id == resource.id,
+            Unavailability.start < booking_request.end,
+            Unavailability.end > booking_request.start,
+        )
+    ).first()
+    if unavailable:
+        return False
+    return not db.scalars(
+        select(BookingSlot).where(
+            BookingSlot.resource_id == resource.id,
+            BookingSlot.request_id != booking_request.id,
+            BookingSlot.slot_start.in_(
+                slots_between(booking_request.start, booking_request.end)
+            ),
+        )
+    ).first()
+
+
 def decide_request(
     db: Session,
     *,
@@ -126,17 +204,63 @@ def decide_request(
     decision: str,
     rejection_note: str = "",
 ) -> str | None:
-    if booking_request.status != "pending":
-        return f"Request #{booking_request.id} has already been decided."
     if decision not in {"approved", "rejected"}:
         return "Invalid decision."
 
-    booking_request.status = decision
-    booking_request.decided_by = admin_id
-    booking_request.decided_at = datetime.now(INDIA_TIMEZONE).replace(tzinfo=None)
-    booking_request.rejection_note = rejection_note.strip() or None
+    request_id = booking_request.id
+    decided_at = india_now()
+    result = db.execute(
+        update(Request)
+        .where(Request.id == request_id, Request.status == "pending")
+        .values(
+            status=decision,
+            decided_by=admin_id,
+            decided_at=decided_at,
+            rejection_note=(rejection_note.strip() or None) if decision == "rejected" else None,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        current = db.scalars(
+            select(Request)
+            .where(Request.id == request_id)
+            .options(joinedload(Request.decider))
+        ).first()
+        if current and current.decider and current.decided_at:
+            return (
+                f"Already {current.status} by {current.decider.name} at "
+                f"{current.decided_at:%d %b %Y, %H:%M}."
+            )
+        return f"Request #{request_id} has already been decided."
+
     if decision == "rejected":
-        db.execute(delete(BookingSlot).where(BookingSlot.request_id == booking_request.id))
+        db.execute(delete(BookingSlot).where(BookingSlot.request_id == request_id))
+    db.commit()
+    return None
+
+
+def cancel_request(db: Session, booking_request: Request) -> str | None:
+    now = india_now()
+    if booking_request.status == "pending":
+        pass
+    elif booking_request.status == "approved" and booking_request.start > now:
+        pass
+    else:
+        return "Only pending or future approved requests can be cancelled."
+    result = db.execute(
+        update(Request)
+        .where(
+            Request.id == booking_request.id,
+            Request.status == booking_request.status,
+        )
+        .values(status="cancelled", status_reason="Cancelled by requester")
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        return "This request changed before it could be cancelled."
+    db.execute(delete(BookingSlot).where(BookingSlot.request_id == booking_request.id))
     db.commit()
     return None
 

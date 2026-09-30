@@ -10,7 +10,7 @@ from backend.routes.dependencies import get_current_user
 from backend.routes.helpers import approval_message, request_response, resource_response
 from backend.schemas import ResourceDetailResponse, SearchResponse
 from backend.services.analytics import ranked_resources
-from backend.services.booking import parse_dt
+from backend.services.booking import expire_pending_requests, parse_dt
 from backend.services.natural_language import parse_natural_language
 
 
@@ -33,6 +33,7 @@ def search_resources(
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    expire_pending_requests(db)
     now = datetime.now()
     week_start = datetime.combine((now - timedelta(days=now.weekday())).date(), time.min)
     default_start = week_start + timedelta(days=2, hours=10)
@@ -96,6 +97,7 @@ def resource_detail(
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    expire_pending_requests(db)
     resource = db.scalars(
         select(Resource)
         .where(Resource.id == resource_id)

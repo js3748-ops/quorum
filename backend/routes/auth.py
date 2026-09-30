@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -18,6 +20,7 @@ from backend.schemas import (
 
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+DEMO_MODE = os.getenv("DEMO_MODE", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @router.get(
@@ -37,6 +40,8 @@ def me(user: User = Depends(get_current_user)):
     description="Lists seeded accounts available through one-click demo login.",
 )
 def demo_accounts(db: Session = Depends(get_db)):
+    if not DEMO_MODE:
+        return []
     return db.scalars(select(User).where(User.is_demo.is_(True)).order_by(User.role, User.name)).all()
 
 
@@ -50,16 +55,21 @@ def demo_accounts(db: Session = Depends(get_db)):
 def signup(payload: SignupRequest, request: Request, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
     name = payload.name.strip()
+    id_number = payload.id_number.strip().upper()
     if payload.role not in {"student", "faculty"}:
         raise HTTPException(status_code=400, detail="Choose faculty or student.")
     if not name:
         raise HTTPException(status_code=400, detail="Name is required.")
+    if not id_number:
+        raise HTTPException(status_code=400, detail="ID number is required.")
     if "@" not in email:
         raise HTTPException(status_code=400, detail="Enter a valid email address.")
     if len(payload.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
     if db.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(status_code=409, detail="An account with that email already exists.")
+    if db.scalar(select(User.id).where(User.id_number == id_number)):
+        raise HTTPException(status_code=409, detail="That ID number is already registered.")
     password_hash, password_salt = hash_password(payload.password)
     user = User(
         name=name,
@@ -67,17 +77,30 @@ def signup(payload: SignupRequest, request: Request, db: Session = Depends(get_d
         password_hash=password_hash,
         password_salt=password_salt,
         role=payload.role,
+        department=payload.department,
+        id_number=id_number,
+        year_of_study=payload.year_of_study,
     )
     db.add(user)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="An account with that email already exists.")
+        raise HTTPException(status_code=409, detail="That email or ID number is already registered.")
     db.refresh(user)
     request.session.clear()
     request.session["user_id"] = user.id
     return {"user": user}
+
+
+@router.get(
+    "/profile",
+    response_model=UserResponse,
+    summary="Get my profile",
+    description="Returns the signed-in user's locked profile details.",
+)
+def profile(user: User = Depends(get_current_user)):
+    return user
 
 
 @router.post(
@@ -104,6 +127,8 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     description="Starts a session for a seeded demo account.",
 )
 def demo_login(payload: DemoLoginRequest, request: Request, db: Session = Depends(get_db)):
+    if not DEMO_MODE:
+        raise HTTPException(status_code=404, detail="Demo login is disabled.")
     user = db.scalar(
         select(User).where(
             User.email == payload.email.strip().lower(), User.is_demo.is_(True)
