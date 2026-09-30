@@ -470,6 +470,17 @@ dd {
   max-width: 240px;
 }
 
+.availability-label {
+  display: inline-block;
+  padding: 3px 5px;
+  border-radius: 2px;
+  background: #ece8e1;
+  color: #6f6a62;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
 .booking-form h2,
 .review-columns h2 {
   font-size: 28px;
@@ -545,6 +556,14 @@ dd {
 .decision-panel form {
   display: grid;
   gap: 10px;
+}
+
+.extension-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 360px) auto;
+  align-items: end;
+  gap: 18px;
+  max-width: 520px;
 }
 
 .impact-preview {
@@ -692,6 +711,17 @@ dd {
 
 .auth-form button {
   justify-self: start;
+}
+
+.otp-message {
+  color: var(--muted);
+  margin: 0;
+}
+
+.otp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .auth-switch {
@@ -893,6 +923,7 @@ tr:target td {
   .review-columns,
   .detail-list,
   .decision-panel,
+  .extension-form,
   .request-summary dl {
     display: block;
   }

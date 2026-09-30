@@ -123,7 +123,7 @@ function statusLabel(status) {
 
 function eventTimeline(events = []) {
   if (!events.length) return `<p class="muted">No history recorded.</p>`;
-  return `<ol class="event-timeline">${events.map((event) => `<li><div><span class="status status-${escapeHtml(event.event.includes("approved") ? "approved" : event.event.includes("rejected") ? "rejected" : event.event === "created" ? "pending" : "cancelled")}">${escapeHtml(readable(event.event))}</span><span class="mono">${escapeHtml(decisionTime(event.created_at))}</span></div><p>${event.actor ? escapeHtml(event.actor.name) : "System"}${event.note ? ` / ${escapeHtml(event.note)}` : ""}</p></li>`).join("")}</ol>`;
+  return `<ol class="event-timeline">${events.map((event) => `<li><div><span class="status status-${escapeHtml(event.event.includes("approved") || event.event === "extended" ? "approved" : event.event.includes("rejected") ? "rejected" : event.event === "created" ? "pending" : "cancelled")}">${escapeHtml(readable(event.event))}</span><span class="mono">${escapeHtml(decisionTime(event.created_at))}</span></div><p>${event.actor ? escapeHtml(event.actor.name) : "System"}${event.note ? ` / ${escapeHtml(event.note)}` : ""}</p></li>`).join("")}</ol>`;
 }
 
 const expectedBackText = (resource) => resource.expected_back
@@ -169,6 +169,35 @@ async function landingPage() {
   renderHeader(null);
 }
 
+function showOtpStep(originalForm, challenge, verifyPath, onVerified) {
+  originalForm.hidden = true;
+  const otpForm = document.createElement("form");
+  otpForm.className = "auth-form otp-form";
+  otpForm.innerHTML = `
+    <p class="otp-message"></p>
+    <label>Verification code<input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label>
+    <div class="otp-actions"><button type="submit">Verify</button><button class="secondary-action" type="button" data-change-email>Use another email</button></div>`;
+  otpForm.querySelector(".otp-message").textContent = challenge.message;
+  originalForm.insertAdjacentElement("afterend", otpForm);
+  otpForm.querySelector("input").focus();
+  otpForm.querySelector("[data-change-email]").addEventListener("click", () => {
+    otpForm.remove();
+    originalForm.hidden = false;
+  });
+  otpForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const result = await api.post(verifyPath, {
+        challenge_id: challenge.challenge_id,
+        otp: new FormData(otpForm).get("otp"),
+      }, { allowUnauthorized: true });
+      onVerified(result);
+    } catch (error) {
+      showError(error.message);
+    }
+  });
+}
+
 async function loginPage() {
   renderHeader(await getUser(true));
   const demos = await api.get("/api/auth/demo-accounts", { allowUnauthorized: true });
@@ -182,10 +211,12 @@ async function loginPage() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     try {
-      const result = await api.post("/api/auth/login", {
+      const challenge = await api.post("/api/auth/login", {
         email: data.get("email"), password: data.get("password"),
       }, { allowUnauthorized: true });
-      window.location.href = homeForUser(result.user);
+      showOtpStep(event.currentTarget, challenge, "/api/auth/login/verify", (result) => {
+        window.location.href = homeForUser(result.user);
+      });
     } catch (error) { showError(error.message); }
   });
   document.querySelectorAll("[data-demo-email]").forEach((form) => form.addEventListener("submit", async (event) => {
@@ -217,8 +248,10 @@ async function signupPage() {
     const data = Object.fromEntries(new FormData(event.currentTarget));
     if (data.year_of_study) data.year_of_study = Number(data.year_of_study);
     try {
-      await api.post("/api/auth/signup", data, { allowUnauthorized: true });
-      window.location.href = "user-dashboard.html";
+      const challenge = await api.post("/api/auth/signup", data, { allowUnauthorized: true });
+      showOtpStep(form, challenge, "/api/auth/signup/verify", () => {
+        window.location.href = "user-dashboard.html";
+      });
     } catch (error) {
       const message = Array.isArray(error.detail) ? error.detail[0]?.msg : error.message;
       showError(message);
@@ -294,13 +327,22 @@ function resourceRows(data, user) {
       <td>${escapeHtml(item.resource.zone.name)}</td><td class="mono">${item.resource.capacity}</td>
       <td>${item.resource.equipment.map(readable).map(escapeHtml).join(", ")}</td>
       <td class="load-cell ${item.zone_load > 0.6 ? "overloaded" : item.zone_load <= 0.3 ? "quiet" : ""}"><span class="mono">${item.load_percent}%</span><span class="load-track"><span style="width:${item.bar_width}%"></span></span></td>
-      <td>${escapeHtml(item.reason)}${item.resource.status === "on_hold" ? `<br><span class="muted">${escapeHtml(item.resource.hold_reason || "Unavailable")}.${escapeHtml(expectedBackText(item.resource))}</span>` : ""}</td><td>${user.role !== "admin" && item.resource.status === "active" ? `<p class="request-outcome">${escapeHtml(item.approval_message)}</p><a class="action" href="${escapeHtml(bookingUrl(item.resource.id, { start: localInput(data.filters.start), end: localInput(data.filters.end), attendees: data.filters.attendees }))}">Book</a>` : statusLabel(item.resource.status)}</td>
+      <td>${escapeHtml(item.reason)}${item.resource.status === "on_hold" ? `<br><span class="muted">${escapeHtml(item.resource.hold_reason || "Unavailable")}.${escapeHtml(expectedBackText(item.resource))}</span>` : ""}</td><td>${!item.available ? `<span class="availability-label">${escapeHtml(item.availability_label || readable(item.resource.status))}</span>` : user.role !== "admin" ? `<p class="request-outcome">${escapeHtml(item.approval_message)}</p><a class="action" href="${escapeHtml(bookingUrl(item.resource.id, { start: localInput(data.filters.start), end: localInput(data.filters.end), attendees: data.filters.attendees }))}">Book</a>` : ""}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
 
 async function resourcesPage() {
   const user = await requireUser();
   const params = new URLSearchParams(window.location.search);
+  const renderQueryError = (message, query) => {
+    document.querySelector("#resource-content").innerHTML = `
+      <form class="command-form" id="command-form"><label class="sr-only" for="command">Describe the resource you need</label><input id="command" name="q" value="${escapeHtml(query)}" placeholder="Quiet lab with a projector for 4 people tomorrow at 2pm" autocomplete="off"><button type="submit">Search</button></form>
+      <section class="empty-state"><h2>Query too vague</h2><p>${escapeHtml(message)}</p></section>`;
+    document.querySelector("#command-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      window.location.search = new URLSearchParams(new FormData(event.currentTarget));
+    });
+  };
   const load = async (query) => {
     try {
       const data = await api.get(`/api/resources?${query.toString()}`);
@@ -320,7 +362,13 @@ async function resourcesPage() {
       document.querySelector("#search-form").addEventListener("submit", (event) => {
         event.preventDefault(); const next = new URLSearchParams(new FormData(event.currentTarget)); window.location.search = next;
       });
-    } catch (error) { showError(error.message); }
+    } catch (error) {
+      if (error.status === 400 && query.get("q")) {
+        renderQueryError(error.message, query.get("q"));
+      } else {
+        showError(error.message);
+      }
+    }
   };
   await load(params);
 }
@@ -509,10 +557,23 @@ async function adminRequestPage() {
       <div><h2>Resource</h2><dl class="detail-list"><div><dt>Name</dt><dd>${escapeHtml(item.resource.name)}</dd></div><div><dt>Zone</dt><dd>${escapeHtml(item.resource.zone.name)}</dd></div><div><dt>Capacity</dt><dd class="mono">${item.resource.capacity}</dd></div><div><dt>Equipment</dt><dd>${escapeHtml(item.resource.equipment.map(readable).join(", ") || "None listed")}</dd></div><div><dt>Open hours</dt><dd class="mono">${item.resource.open_time.slice(0, 5)}-${item.resource.close_time.slice(0, 5)}</dd></div></dl></div>
     </section>
     <section class="rule-section"><h2>Booking</h2><div class="request-summary"><dl><div><dt>Date</dt><dd class="mono">${fullDate(item.start)}</dd></div><div><dt>Time</dt><dd class="mono">${clock(item.start)}-${clock(item.end)}</dd></div><div><dt>Attendees</dt><dd class="mono">${item.attendees}</dd></div><div><dt>Submitted</dt><dd class="mono">${decisionTime(item.created_at)}</dd></div><div><dt>Confirmed</dt><dd class="mono">${item.confirmed_at ? decisionTime(item.confirmed_at) : "Not recorded"}</dd></div><div><dt>Slot still free</dt><dd>${data.slot_is_free ? "Yes" : "No"}</dd></div><div><dt>Zone load</dt><dd class="mono">${data.load_percent}%</dd></div></dl></div><div class="purpose-block"><dt>Purpose</dt><dd>${escapeHtml(displayPurpose(item.purpose))}</dd></div></section>
+    ${["pending", "approved"].includes(item.status) ? `<section class="rule-section"><h2>Extend booking</h2><form class="extension-form" data-extend="${item.id}"><label>New end time<input name="new_end" type="datetime-local" min="${escapeHtml(localInput(item.end))}" step="1800" required></label><button type="submit">Extend</button></form></section>` : ""}
     <section class="rule-section"><h2>Decision</h2>${item.status === "pending" ? `<div class="decision-panel"><form data-approve="${item.id}"><button type="submit">Approve</button></form><form data-reject="${item.id}"><label>Rejection note (optional)<textarea name="rejection_note" placeholder="Reason for rejection"></textarea></label><button class="secondary-action" type="submit">Reject</button></form></div>` : `<p>${requestDecision(item)}</p>`}</section>
     <section class="rule-section"><h2>History</h2>${eventTimeline(item.events)}</section>`;
   const approve = document.querySelector("[data-approve]");
   const reject = document.querySelector("[data-reject]");
+  const extend = document.querySelector("[data-extend]");
+  if (extend) extend.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const newEnd = new FormData(event.currentTarget).get("new_end");
+    try {
+      await api.post(`/api/admin/requests/${item.id}/extend`, { new_end: newEnd });
+      await adminRequestPage();
+      showNotice("Booking extended");
+    } catch (error) {
+      showError(error.message);
+    }
+  });
   if (approve) approve.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {

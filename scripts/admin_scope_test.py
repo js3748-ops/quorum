@@ -56,8 +56,8 @@ class ApiSession:
 def login(email: str) -> tuple[ApiSession, dict]:
     session = ApiSession()
     response = session.post(
-        "/api/auth/login",
-        json={"email": email, "password": "demo1234"},
+        "/api/auth/demo-login",
+        json={"email": email},
     )
     response.raise_for_status()
     return session, response.json()["user"]
@@ -230,6 +230,9 @@ def main() -> None:
             indent=2,
         )
     )
+    for item in (lab_request, seminar_request):
+        cleanup = student.post(f"/api/requests/{item['id']}/cancel", json={})
+        cleanup.raise_for_status()
 
 
 if __name__ == "__main__":

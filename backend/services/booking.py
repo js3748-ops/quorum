@@ -291,6 +291,67 @@ def cancel_request(db: Session, booking_request: Request) -> str | None:
     return None
 
 
+def extend_booking_request(
+    db: Session,
+    *,
+    booking_request: Request,
+    new_end: datetime,
+    admin_id: int,
+) -> str | None:
+    old_end = booking_request.end
+    current_status = booking_request.status
+    now = india_now()
+    if current_status not in {"pending", "approved"} or old_end <= now:
+        return "Only pending or active future bookings can be extended."
+    if new_end <= old_end:
+        return "The new end time must be later than the current end time."
+    if new_end.date() != booking_request.start.date():
+        return "A booking extension must end on the same day."
+    if new_end > now + timedelta(days=30):
+        return "Bookings can only be extended up to 30 days ahead."
+
+    conflict = find_conflict(db, booking_request.resource, old_end, new_end)
+    if conflict:
+        return conflict
+
+    result = db.execute(
+        update(Request)
+        .where(
+            Request.id == booking_request.id,
+            Request.status == current_status,
+            Request.end == old_end,
+        )
+        .values(end=new_end)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        return "This request changed before it could be extended."
+
+    for slot_start in slots_between(old_end, new_end):
+        db.add(
+            BookingSlot(
+                request_id=booking_request.id,
+                resource_id=booking_request.resource_id,
+                slot_start=slot_start,
+            )
+        )
+    add_request_event(
+        db,
+        request_id=booking_request.id,
+        event="extended",
+        actor_user_id=admin_id,
+        note=f"Extended from {old_end:%H:%M} to {new_end:%H:%M}",
+        created_at=now,
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return "The additional time was just booked by another request."
+    return None
+
+
 def nearest_free_times(
     db: Session,
     resource: Resource,

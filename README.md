@@ -11,6 +11,19 @@ python backend/seed.py
 
 Set `SESSION_SECRET` in `.env` before deployment. The backend contains a clearly marked local-development fallback. `DATABASE_URL` is optional and defaults to the existing root-level SQLite database; set it to another SQLAlchemy URL when moving to PostgreSQL.
 
+Authentication uses PBKDF2-SHA256 password hashing, signed `HttpOnly` sessions, login throttling, a 30-minute idle timeout, and a 12-hour absolute session lifetime. Set `COOKIE_SECURE=true` when the frontend and backend are served over HTTPS. `SESSION_IDLE_MINUTES` and `SESSION_ABSOLUTE_HOURS` can override the timeout defaults.
+
+Normal signup and email/password login require a six-digit email OTP. Configure `OTP_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_FROM_EMAIL` in `.env`. Port 587 defaults to STARTTLS; for implicit TLS on port 465, set `SMTP_USE_SSL=true` and `SMTP_STARTTLS=false`. OTPs expire after 10 minutes, are single-use, and are never stored or logged in plaintext. Local demo buttons remain available only when `DEMO_MODE` is enabled.
+
+To enable LLM parsing for natural-language searches, set `LLM_API_KEY` in `.env`. The default configuration uses OpenAI's compatible endpoint and can be changed for another provider:
+
+```env
+LLM_API_KEY=your-api-key
+LLM_MODEL=openai/gpt-oss-20b
+```
+
+Never commit a real API key. With an empty key, Quorum automatically uses its local rule-based parser.
+
 All seeded demo accounts use the password `demo1234`. They are also available as one-click options on the login page.
 
 ## Run
@@ -81,4 +94,4 @@ python scripts/race_test.py
 
 The script logs in through the API, sends 20 simultaneous JSON booking requests for one resource and slot, and must report one success and 19 conflicts.
 
-Natural-language search works without configuration through the built-in rule parser. To use an OpenAI-compatible API, set `LLM_API_KEY`; `LLM_API_URL` and `LLM_MODEL` are optional overrides. API failures fall back to local parsing.
+Natural-language search works without configuration through the built-in rule parser. To use Groq, set `LLM_API_KEY`; the app defaults to Groq's chat-completions endpoint and the `openai/gpt-oss-20b` model. `LLM_API_URL` remains an optional override for another OpenAI-compatible provider, and API failures fall back to local parsing.

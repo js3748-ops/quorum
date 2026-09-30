@@ -53,6 +53,21 @@ class User(Base):
     member_since: Mapped[datetime] = mapped_column(DateTime, default=india_now, nullable=False)
 
 
+class AuthChallenge(Base):
+    __tablename__ = "auth_challenges"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    purpose: Mapped[str] = mapped_column(String(20), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    otp_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class Resource(Base):
     __tablename__ = "resources"
 

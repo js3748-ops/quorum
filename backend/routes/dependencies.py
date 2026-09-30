@@ -1,11 +1,14 @@
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from backend.auth import authenticated_session_is_valid
 from backend.database import get_db
 from backend.models import User
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    if not authenticated_session_is_valid(request.session):
+        raise HTTPException(status_code=401, detail="Authentication required.")
     user_id = request.session.get("user_id")
     user = db.get(User, user_id) if isinstance(user_id, int) else None
     if not user or user.role == "background":

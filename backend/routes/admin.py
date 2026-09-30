@@ -19,6 +19,7 @@ from backend.schemas import (
     AdminResourcesResponse,
     AdminUserListResponse,
     AdminUserUpdate,
+    BookingExtension,
     BookingRequestResponse,
     PendingListResponse,
     RejectRequest,
@@ -33,6 +34,7 @@ from backend.services.analytics import zone_loads
 from backend.services.admin_scope import admin_can_access_resource, scope_resource_query
 from backend.services.booking import (
     decide_request,
+    extend_booking_request,
     expire_pending_requests,
     request_slot_is_free,
     validate_request_window,
@@ -238,6 +240,50 @@ def reject_request(
         select(Request)
         .where(Request.id == request_id)
         .options(joinedload(Request.user), joinedload(Request.resource).joinedload(Resource.zone))
+    ).first()
+    return request_response(item)
+
+
+@router.post(
+    "/requests/{request_id}/extend",
+    response_model=BookingRequestResponse,
+    summary="Extend a booking request",
+    description="Extends a pending or approved booking when the additional slots are available.",
+)
+def extend_request(
+    request_id: int,
+    payload: BookingExtension,
+    admin=Depends(get_admin),
+    db: Session = Depends(get_db),
+):
+    expire_pending_requests(db)
+    item = db.scalars(
+        select(Request)
+        .where(Request.id == request_id)
+        .options(joinedload(Request.user), joinedload(Request.resource))
+    ).first()
+    if (
+        not item
+        or item.user.role == "background"
+        or not admin_can_access_resource(admin, item.resource)
+    ):
+        raise HTTPException(status_code=404, detail="Request not found.")
+    error = extend_booking_request(
+        db,
+        booking_request=item,
+        new_end=payload.new_end,
+        admin_id=admin.id,
+    )
+    if error:
+        raise HTTPException(status_code=409, detail=error)
+    item = db.scalars(
+        select(Request)
+        .where(Request.id == request_id)
+        .options(
+            joinedload(Request.user),
+            joinedload(Request.decider),
+            joinedload(Request.resource).joinedload(Resource.zone),
+        )
     ).first()
     return request_response(item)
 

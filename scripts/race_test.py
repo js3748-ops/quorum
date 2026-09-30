@@ -17,14 +17,14 @@ def login(base_url: str) -> str:
     try:
         connection.request(
             "POST",
-            "/api/auth/login",
-            body=json.dumps({"email": "asha@quorum.local", "password": "demo1234"}),
+            "/api/auth/demo-login",
+            body=json.dumps({"email": "asha@quorum.local"}),
             headers={"Content-Type": "application/json"},
         )
         response = connection.getresponse()
         response.read()
         if response.status != 200:
-            raise SystemExit(f"Login failed with status {response.status}. Run the seed script first.")
+            raise SystemExit(f"Demo login failed with status {response.status}. Run the seed script first.")
         cookie = SimpleCookie()
         cookie.load(response.getheader("Set-Cookie") or "")
         if "session" not in cookie:
@@ -34,7 +34,7 @@ def login(base_url: str) -> str:
         connection.close()
 
 
-def submit(base_url: str, payload: str, barrier: Barrier, session_cookie: str) -> int:
+def submit(base_url: str, payload: str, barrier: Barrier, session_cookie: str) -> tuple[int, int | None]:
     target = urlparse(base_url)
     connection = HTTPConnection(target.hostname, target.port or 80, timeout=30)
     barrier.wait()
@@ -49,8 +49,9 @@ def submit(base_url: str, payload: str, barrier: Barrier, session_cookie: str) -
             },
         )
         response = connection.getresponse()
-        response.read()
-        return response.status
+        body = response.read()
+        data = json.loads(body or b"null")
+        return response.status, data.get("id") if isinstance(data, dict) else None
     finally:
         connection.close()
 
@@ -81,8 +82,9 @@ def main() -> None:
             )
         )
 
-    succeeded = sum(status == 201 for status in results)
-    rejected = sum(status == 409 for status in results)
+    statuses = [status for status, _ in results]
+    succeeded = sum(status == 201 for status in statuses)
+    rejected = sum(status == 409 for status in statuses)
     unexpected = WORKERS - succeeded - rejected
     print(f"Slot: {start:%Y-%m-%d %H:%M}")
     print(f"Succeeded: {succeeded}")
@@ -92,6 +94,21 @@ def main() -> None:
             f"Race test failed: expected 1 success and {WORKERS - 1} conflicts; "
             f"received {unexpected} unexpected responses."
         )
+    successful_id = next(request_id for status, request_id in results if status == 201)
+    connection = HTTPConnection(urlparse(base_url).hostname, urlparse(base_url).port or 80, timeout=30)
+    try:
+        connection.request(
+            "POST",
+            f"/api/requests/{successful_id}/cancel",
+            body="{}",
+            headers={"Content-Type": "application/json", "Cookie": session_cookie},
+        )
+        response = connection.getresponse()
+        response.read()
+        if response.status != 200:
+            raise SystemExit(f"Race-test cleanup failed with status {response.status}.")
+    finally:
+        connection.close()
 
 
 if __name__ == "__main__":

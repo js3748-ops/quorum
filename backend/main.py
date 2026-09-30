@@ -38,12 +38,19 @@ app.include_router(dashboard.user_router)
 
 # Local development only. Production deployments must set SESSION_SECRET.
 SESSION_SECRET = os.getenv("SESSION_SECRET") or "local-development-only-change-me"
+SESSION_MAX_AGE = int(os.getenv("SESSION_ABSOLUTE_HOURS", "12")) * 60 * 60
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
     same_site="lax",
-    https_only=False,
-    max_age=60 * 60 * 24 * 7,
+    https_only=COOKIE_SECURE,
+    max_age=SESSION_MAX_AGE,
 )
 app.add_middleware(
     CORSMiddleware,

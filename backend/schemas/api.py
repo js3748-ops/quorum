@@ -37,6 +37,17 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class AuthChallengeResponse(BaseModel):
+    challenge_id: str
+    message: str
+    expires_in_seconds: int
+
+
+class OtpVerifyRequest(BaseModel):
+    challenge_id: str = Field(min_length=20, max_length=64)
+    otp: str = Field(pattern=r"^\d{6}$")
+
+
 class DemoLoginRequest(BaseModel):
     email: str
 
@@ -178,6 +189,8 @@ class RankedResourceResponse(BaseModel):
     bar_width: int
     reason: str
     approval_message: str
+    available: bool
+    availability_label: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -206,6 +219,10 @@ class PendingListResponse(BaseModel):
 
 class RejectRequest(BaseModel):
     rejection_note: str = ""
+
+
+class BookingExtension(BaseModel):
+    new_end: datetime
 
 
 class AdminRequestFilters(BaseModel):

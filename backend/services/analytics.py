@@ -63,7 +63,13 @@ def ranked_resources(
         available_equipment = {item.lower() for item in resource.equipment or []}
         if not needed_equipment.issubset(available_equipment):
             continue
-        if resource.status == "active" and find_conflict(db, resource, start, end):
+        conflict = (
+            find_conflict(db, resource, start, end)
+            if resource.status == "active"
+            else None
+        )
+        is_booked = bool(conflict and conflict.startswith("Booked "))
+        if conflict and not is_booked:
             continue
 
         load = loads.get(resource.zone_id, 0.0)
@@ -72,6 +78,9 @@ def ranked_resources(
         score = wasted_capacity * 40 + congestion_penalty
         if resource.status == "on_hold":
             reason = f"On hold: {resource.hold_reason or 'Unavailable'}"
+            score = float("inf")
+        elif is_booked:
+            reason = "Already booked for this time"
             score = float("inf")
         elif load > 0.6:
             reason = f"{resource.zone.name} at {load:.0%}, ranked lower"
@@ -87,6 +96,8 @@ def ranked_resources(
                 "bar_width": min(round(load * 100), 100),
                 "reason": reason,
                 "score": score,
+                "available": resource.status == "active" and not is_booked,
+                "availability_label": "Already booked" if is_booked else None,
             }
         )
 

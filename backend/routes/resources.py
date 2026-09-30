@@ -11,7 +11,7 @@ from backend.routes.helpers import approval_message, request_response, resource_
 from backend.schemas import ResourceDetailResponse, SearchResponse
 from backend.services.analytics import ranked_resources
 from backend.services.booking import expire_pending_requests, parse_dt
-from backend.services.natural_language import parse_natural_language
+from backend.services.natural_language import VagueSearchError, parse_natural_language
 
 
 router = APIRouter(prefix="/api/resources", tags=["Resources"])
@@ -39,7 +39,10 @@ def search_resources(
     week_start = datetime.combine((now - timedelta(days=now.weekday())).date(), time.min)
     default_start = week_start + timedelta(days=2, hours=10)
     if q.strip():
-        parsed = parse_natural_language(q.strip(), now)
+        try:
+            parsed = parse_natural_language(q.strip(), now)
+        except VagueSearchError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
         resource_type = str(parsed["type"])
         attendees = int(parsed["attendees"])
         equipment_items = list(parsed["equipment"])
@@ -72,6 +75,8 @@ def search_resources(
             "bar_width": item["bar_width"],
             "reason": item["reason"],
             "approval_message": approval_message(user, item["resource"]),
+            "available": item["available"],
+            "availability_label": item["availability_label"],
         }
         for item in ranked
     ]

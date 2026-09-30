@@ -5,17 +5,31 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.auth import hash_password, verify_password
+from backend.auth import (
+    hash_password,
+    login_throttle,
+    start_authenticated_session,
+    verify_login_password,
+)
 from backend.database import get_db
 from backend.models import User
 from backend.routes.dependencies import get_current_user
 from backend.schemas import (
+    AuthChallengeResponse,
     AuthResponse,
     DemoLoginRequest,
     LoginRequest,
     MessageResponse,
+    OtpVerifyRequest,
     SignupRequest,
     UserResponse,
+)
+from backend.services.otp import (
+    EmailDeliveryError,
+    OTP_TTL_SECONDS,
+    OtpRateLimitError,
+    consume_otp_challenge,
+    create_otp_challenge,
 )
 
 
@@ -47,12 +61,12 @@ def demo_accounts(db: Session = Depends(get_db)):
 
 @router.post(
     "/signup",
-    response_model=AuthResponse,
-    status_code=201,
-    summary="Create an account",
-    description="Creates a student or faculty account and starts a session.",
+    response_model=AuthChallengeResponse,
+    status_code=202,
+    summary="Start account creation",
+    description="Validates signup details and emails a single-use verification code.",
 )
-def signup(payload: SignupRequest, request: Request, db: Session = Depends(get_db)):
+def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
     name = payload.name.strip()
     id_number = payload.id_number.strip().upper()
@@ -71,16 +85,61 @@ def signup(payload: SignupRequest, request: Request, db: Session = Depends(get_d
     if db.scalar(select(User.id).where(User.id_number == id_number)):
         raise HTTPException(status_code=409, detail="That ID number is already registered.")
     password_hash, password_salt = hash_password(payload.password)
-    user = User(
-        name=name,
-        email=email,
-        password_hash=password_hash,
-        password_salt=password_salt,
-        role=payload.role,
-        department=payload.department,
-        id_number=id_number,
-        year_of_study=payload.year_of_study,
+    try:
+        challenge = create_otp_challenge(
+            db,
+            purpose="signup",
+            email=email,
+            context={
+                "name": name,
+                "email": email,
+                "password_hash": password_hash,
+                "password_salt": password_salt,
+                "role": payload.role,
+                "department": payload.department,
+                "id_number": id_number,
+                "year_of_study": payload.year_of_study,
+            },
+        )
+    except OtpRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {
+        "challenge_id": challenge.id,
+        "message": f"A verification code was sent to {email}.",
+        "expires_in_seconds": OTP_TTL_SECONDS,
+    }
+
+
+@router.post(
+    "/signup/verify",
+    response_model=AuthResponse,
+    status_code=201,
+    summary="Verify account creation",
+    description="Consumes the emailed code, creates the account, and starts a signed session.",
+)
+def verify_signup(
+    payload: OtpVerifyRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    challenge = consume_otp_challenge(
+        db,
+        challenge_id=payload.challenge_id,
+        otp=payload.otp,
+        purpose="signup",
     )
+    if not challenge or not challenge.context:
+        raise HTTPException(status_code=400, detail="The code is incorrect or has expired.")
+    values = challenge.context
+    if db.scalar(select(User.id).where(User.email == values["email"])):
+        db.rollback()
+        raise HTTPException(status_code=409, detail="That account has already been created.")
+    if db.scalar(select(User.id).where(User.id_number == values["id_number"])):
+        db.rollback()
+        raise HTTPException(status_code=409, detail="That ID number is already registered.")
+    user = User(**values)
     db.add(user)
     try:
         db.commit()
@@ -88,8 +147,7 @@ def signup(payload: SignupRequest, request: Request, db: Session = Depends(get_d
         db.rollback()
         raise HTTPException(status_code=409, detail="That email or ID number is already registered.")
     db.refresh(user)
-    request.session.clear()
-    request.session["user_id"] = user.id
+    start_authenticated_session(request.session, user.id)
     return {"user": user}
 
 
@@ -105,18 +163,75 @@ def profile(user: User = Depends(get_current_user)):
 
 @router.post(
     "/login",
-    response_model=AuthResponse,
-    summary="Log in",
-    description="Validates credentials and starts a signed session.",
+    response_model=AuthChallengeResponse,
+    status_code=202,
+    summary="Start login",
+    description="Validates credentials and emails a single-use verification code.",
 )
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == payload.email.strip().lower()))
-    if not user or user.role == "background" or not verify_password(
-        payload.password, user.password_hash, user.password_salt
-    ):
+    email = payload.email.strip().lower()
+    ip_address = request.client.host if request.client else "unknown"
+    retry_after = login_throttle.retry_after(email, ip_address)
+    if retry_after:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Try again in a few minutes.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    user = db.scalar(select(User).where(User.email == email))
+    password_matches = verify_login_password(
+        payload.password,
+        user.password_hash if user else None,
+        user.password_salt if user else None,
+    )
+    if not user or user.role == "background" or not password_matches:
+        login_throttle.record_failure(email, ip_address)
         raise HTTPException(status_code=401, detail="Email or password is incorrect.")
-    request.session.clear()
-    request.session["user_id"] = user.id
+    login_throttle.clear_identity(email, ip_address)
+    try:
+        challenge = create_otp_challenge(
+            db,
+            purpose="login",
+            email=email,
+            user_id=user.id,
+        )
+    except OtpRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {
+        "challenge_id": challenge.id,
+        "message": f"A verification code was sent to {email}.",
+        "expires_in_seconds": OTP_TTL_SECONDS,
+    }
+
+
+@router.post(
+    "/login/verify",
+    response_model=AuthResponse,
+    summary="Verify login",
+    description="Consumes the emailed code and starts a signed session.",
+)
+def verify_login(
+    payload: OtpVerifyRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    challenge = consume_otp_challenge(
+        db,
+        challenge_id=payload.challenge_id,
+        otp=payload.otp,
+        purpose="login",
+    )
+    if not challenge or challenge.user_id is None:
+        raise HTTPException(status_code=400, detail="The code is incorrect or has expired.")
+    user = db.get(User, challenge.user_id)
+    if not user or user.role == "background":
+        db.rollback()
+        raise HTTPException(status_code=400, detail="The code is incorrect or has expired.")
+    db.commit()
+    start_authenticated_session(request.session, user.id)
     return {"user": user}
 
 
@@ -136,8 +251,7 @@ def demo_login(payload: DemoLoginRequest, request: Request, db: Session = Depend
     )
     if not user:
         raise HTTPException(status_code=404, detail="Demo account not found.")
-    request.session.clear()
-    request.session["user_id"] = user.id
+    start_authenticated_session(request.session, user.id)
     return {"user": user}
 
 
