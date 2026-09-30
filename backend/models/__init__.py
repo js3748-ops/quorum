@@ -1,7 +1,8 @@
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -63,6 +64,8 @@ class Resource(Base):
     equipment: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     requires_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+    hold_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expected_back: Mapped[date | None] = mapped_column(Date, nullable=True)
     open_time: Mapped[time] = mapped_column(Time, nullable=False)
     close_time: Mapped[time] = mapped_column(Time, nullable=False)
 
@@ -109,6 +112,26 @@ class Request(Base):
     slots: Mapped[list["BookingSlot"]] = relationship(
         back_populates="request", cascade="all, delete-orphan"
     )
+    events: Mapped[list["RequestEvent"]] = relationship(
+        back_populates="request",
+        cascade="all, delete-orphan",
+        order_by="RequestEvent.created_at",
+        lazy="selectin",
+    )
+
+
+class RequestEvent(Base):
+    __tablename__ = "request_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"), nullable=False)
+    event: Mapped[str] = mapped_column(String(50), nullable=False)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=india_now, nullable=False)
+
+    request: Mapped[Request] = relationship(back_populates="events")
+    actor: Mapped[User | None] = relationship(lazy="joined")
 
 
 class BookingSlot(Base):

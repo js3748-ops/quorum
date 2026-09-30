@@ -8,7 +8,15 @@ sys.path.insert(0, str(ROOT))
 
 from backend.auth import hash_password  # noqa: E402
 from backend.database import Base, SessionLocal, engine  # noqa: E402
-from backend.models import BookingSlot, Request, Resource, Unavailability, User, Zone  # noqa: E402
+from backend.models import (  # noqa: E402
+    BookingSlot,
+    Request,
+    RequestEvent,
+    Resource,
+    Unavailability,
+    User,
+    Zone,
+)
 from backend.services.booking import slots_between  # noqa: E402
 
 
@@ -156,6 +164,25 @@ def main():
             )
             db.add(req)
             db.flush()
+            db.add(
+                RequestEvent(
+                    request_id=req.id,
+                    event="created",
+                    actor_user_id=req.user_id,
+                    note="Seeded background request",
+                    created_at=demo_start - timedelta(days=2),
+                )
+            )
+            if req.status == "approved":
+                db.add(
+                    RequestEvent(
+                        request_id=req.id,
+                        event="approved",
+                        actor_user_id=users[5].id,
+                        note="Seeded approval",
+                        created_at=demo_start - timedelta(days=1),
+                    )
+                )
             for slot_start in slots_between(demo_start, demo_end):
                 db.add(
                     BookingSlot(
@@ -204,6 +231,25 @@ def main():
             )
             db.add(req)
             db.flush()
+            db.add(
+                RequestEvent(
+                    request_id=req.id,
+                    event="created",
+                    actor_user_id=req.user_id,
+                    note="Seeded background request",
+                    created_at=start - timedelta(days=2),
+                )
+            )
+            if req.status == "approved":
+                db.add(
+                    RequestEvent(
+                        request_id=req.id,
+                        event="approved",
+                        actor_user_id=users[5].id,
+                        note="Seeded approval",
+                        created_at=start - timedelta(days=1),
+                    )
+                )
             for slot_start in slot_values:
                 db.add(
                     BookingSlot(
@@ -216,8 +262,7 @@ def main():
 
         for index in range(4):
             rejected_start = start_of_week + timedelta(days=index, hours=18)
-            db.add(
-                Request(
+            req = Request(
                     user_id=background_users[index].id,
                     resource_id=resources[10 + index].id,
                     start=rejected_start,
@@ -228,6 +273,48 @@ def main():
                     decided_by=users[-1].id,
                     decided_at=start_of_week,
                     rejection_note="Seeded dashboard example",
+                )
+            db.add(req)
+            db.flush()
+            db.add_all(
+                [
+                    RequestEvent(
+                        request_id=req.id,
+                        event="created",
+                        actor_user_id=req.user_id,
+                        note="Seeded background request",
+                        created_at=rejected_start - timedelta(days=2),
+                    ),
+                    RequestEvent(
+                        request_id=req.id,
+                        event="rejected",
+                        actor_user_id=users[-1].id,
+                        note="Seeded dashboard example",
+                        created_at=start_of_week,
+                    ),
+                ]
+            )
+
+        held_resource = resources[20]
+        held_resource.status = "on_hold"
+        held_resource.hold_reason = "Under construction"
+        held_resource.expected_back = (datetime.now() + timedelta(days=45)).date()
+        held_requests = db.query(Request).filter(
+            Request.resource_id == held_resource.id,
+            Request.status.in_(("pending", "approved")),
+        ).all()
+        for req in held_requests:
+            req.status = "cancelled"
+            req.status_reason = "Resource on hold: Under construction"
+            db.query(BookingSlot).filter(BookingSlot.request_id == req.id).delete(
+                synchronize_session=False
+            )
+            db.add(
+                RequestEvent(
+                    request_id=req.id,
+                    event="auto_cancelled_hold",
+                    actor_user_id=users[5].id,
+                    note=req.status_reason,
                 )
             )
 

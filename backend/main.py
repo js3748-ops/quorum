@@ -34,6 +34,7 @@ app.include_router(resources.router)
 app.include_router(bookings.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
+app.include_router(dashboard.user_router)
 
 # Local development only. Production deployments must set SESSION_SECRET.
 SESSION_SECRET = os.getenv("SESSION_SECRET") or "local-development-only-change-me"

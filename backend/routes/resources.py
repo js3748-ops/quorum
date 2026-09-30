@@ -30,6 +30,7 @@ def search_resources(
     start: str | None = None,
     end: str | None = None,
     q: str = "",
+    show_on_hold: bool = False,
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -61,6 +62,7 @@ def search_resources(
         equipment=equipment_items,
         start=start_dt,
         end=end_dt,
+        show_on_hold=show_on_hold,
     )
     results = [
         {
@@ -81,6 +83,7 @@ def search_resources(
             "start": start_dt,
             "end": end_dt,
             "query": q.strip(),
+            "show_on_hold": show_on_hold,
         },
         "results": results,
     }

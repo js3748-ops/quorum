@@ -67,3 +67,15 @@ def init_db():
         for column, statement in request_migrations.items():
             if column not in request_columns:
                 connection.execute(text(statement))
+    resource_columns = {column["name"] for column in inspect(engine).get_columns("resources")}
+    resource_migrations = {
+        "hold_reason": "ALTER TABLE resources ADD COLUMN hold_reason TEXT",
+        "expected_back": "ALTER TABLE resources ADD COLUMN expected_back DATE",
+    }
+    with engine.begin() as connection:
+        for column, statement in resource_migrations.items():
+            if column not in resource_columns:
+                connection.execute(text(statement))
+        connection.execute(
+            text("UPDATE resources SET status = 'inactive' WHERE status = 'maintenance'")
+        )

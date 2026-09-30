@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -76,6 +76,8 @@ class ResourceResponse(ORMModel):
     equipment: list[str]
     requires_approval: bool
     status: str
+    hold_reason: str | None
+    expected_back: date | None
     open_time: time
     close_time: time
 
@@ -100,6 +102,15 @@ class RequestUserResponse(ORMModel):
     member_since: datetime | None = None
 
 
+class RequestEventResponse(ORMModel):
+    id: int
+    event: str
+    actor_user_id: int | None
+    actor: RequestUserResponse | None
+    note: str | None
+    created_at: datetime
+
+
 class BookingRequestResponse(ORMModel):
     id: int
     user_id: int
@@ -118,6 +129,7 @@ class BookingRequestResponse(ORMModel):
     status_reason: str | None
     confirmed_at: datetime | None
     created_at: datetime
+    events: list[RequestEventResponse] = Field(default_factory=list)
 
 
 class BookingCreate(BaseModel):
@@ -156,6 +168,7 @@ class SearchFilters(BaseModel):
     start: datetime
     end: datetime
     query: str = ""
+    show_on_hold: bool = False
 
 
 class RankedResourceResponse(BaseModel):
@@ -255,7 +268,13 @@ class ResourceCreate(BaseModel):
 
 
 class ResourceUpdate(ResourceCreate):
-    status: Literal["active", "maintenance"]
+    status: Literal["active", "inactive"]
+
+
+class ResourceHoldCreate(BaseModel):
+    reason: str = Field(min_length=1, max_length=240)
+    expected_back: date | None = None
+    confirmed_request_ids: list[int] | None = None
 
 
 class UnavailabilityCreate(BaseModel):
@@ -313,3 +332,41 @@ class DashboardResponse(BaseModel):
     slot_labels: list[str]
     most_used: UsageExtreme | None
     least_used: UsageExtreme | None
+
+
+class ZoneLoadResponse(BaseModel):
+    zone: ZoneResponse
+    load: float
+    percent: int
+
+
+class UserDashboardResponse(BaseModel):
+    upcoming: list[BookingRequestResponse]
+    pending: list[BookingRequestResponse]
+    recent_decisions: list[BookingRequestResponse]
+    quieter_zones: list[ZoneLoadResponse]
+    holds: list[ResourceResponse]
+
+
+class AdminHomeResponse(BaseModel):
+    pending: list[PendingRequestResponse]
+    today_counts: dict[str, int]
+    holds: list[ResourceResponse]
+
+
+class HistoryFilters(BaseModel):
+    status: str
+    date_from: date | None
+    date_to: date | None
+    resource_id: int | None
+    requester_id: int | None
+    deciding_admin_id: int | None
+    q: str
+
+
+class AdminHistoryResponse(BaseModel):
+    filters: HistoryFilters
+    requests: list[BookingRequestResponse]
+    resources: list[ResourceResponse]
+    requesters: list[RequestUserResponse]
+    deciding_admins: list[RequestUserResponse]

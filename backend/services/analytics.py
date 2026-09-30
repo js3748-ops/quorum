@@ -45,10 +45,12 @@ def ranked_resources(
     equipment: list[str],
     start: datetime,
     end: datetime,
+    show_on_hold: bool = False,
 ) -> list[dict[str, object]]:
+    allowed_statuses = ["active", "on_hold"] if show_on_hold else ["active"]
     query = (
         select(Resource)
-        .where(Resource.status == "active", Resource.capacity >= attendees)
+        .where(Resource.status.in_(allowed_statuses), Resource.capacity >= attendees)
         .options(joinedload(Resource.zone))
     )
     if resource_type:
@@ -61,14 +63,17 @@ def ranked_resources(
         available_equipment = {item.lower() for item in resource.equipment or []}
         if not needed_equipment.issubset(available_equipment):
             continue
-        if find_conflict(db, resource, start, end):
+        if resource.status == "active" and find_conflict(db, resource, start, end):
             continue
 
         load = loads.get(resource.zone_id, 0.0)
         wasted_capacity = (resource.capacity - attendees) / resource.capacity
         congestion_penalty = load * 35 + max(0.0, load - 0.6) * 180
         score = wasted_capacity * 40 + congestion_penalty
-        if load > 0.6:
+        if resource.status == "on_hold":
+            reason = f"On hold: {resource.hold_reason or 'Unavailable'}"
+            score = float("inf")
+        elif load > 0.6:
             reason = f"{resource.zone.name} at {load:.0%}, ranked lower"
         elif load <= 0.3:
             reason = "Quieter zone"
@@ -86,6 +91,22 @@ def ranked_resources(
         )
 
     return sorted(results, key=lambda item: (item["score"], item["resource"].capacity))
+
+
+def current_zone_loads(db: Session, now: datetime | None = None) -> list[dict[str, object]]:
+    now = now or datetime.now()
+    slot_end = now + timedelta(minutes=30)
+    loads = zone_loads(db, now, slot_end)
+    zones = db.scalars(select(Zone).order_by(Zone.name)).all()
+    rows = [
+        {
+            "zone": zone,
+            "load": loads.get(zone.id, 0.0),
+            "percent": round(loads.get(zone.id, 0.0) * 100),
+        }
+        for zone in zones
+    ]
+    return sorted(rows, key=lambda item: (item["load"], item["zone"].name))
 
 
 def current_week_dashboard(db: Session, now: datetime | None = None) -> dict[str, object]:

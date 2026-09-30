@@ -33,6 +33,11 @@ def create_request(
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if user.role == "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Administrators cannot create booking requests.",
+        )
     expire_pending_requests(db)
     horizon_error = validate_booking_horizon(payload.start, payload.end)
     if horizon_error:

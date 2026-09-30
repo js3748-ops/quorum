@@ -5,16 +5,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from backend.models import BookingSlot, Request, Resource, Unavailability, User
+from backend.services.booking_time import INDIA_TIMEZONE, india_now
+from backend.services.request_events import add_request_event
 
 SLOT_MINUTES = 30
 MAX_PENDING_REQUESTS = 3
-INDIA_TIMEZONE = timezone(timedelta(hours=5, minutes=30), name="Asia/Kolkata")
-
-
-def india_now() -> datetime:
-    return datetime.now(INDIA_TIMEZONE).replace(tzinfo=None)
-
-
 def expire_pending_requests(db: Session, now: datetime | None = None) -> int:
     now = now or india_now()
     request_ids = list(
@@ -29,6 +24,14 @@ def expire_pending_requests(db: Session, now: datetime | None = None) -> int:
     if not request_ids:
         return 0
     db.execute(delete(BookingSlot).where(BookingSlot.request_id.in_(request_ids)))
+    for request_id in request_ids:
+        add_request_event(
+            db,
+            request_id=request_id,
+            event="expired",
+            note="Start time passed before review",
+            created_at=now,
+        )
     db.commit()
     return len(request_ids)
 
@@ -155,6 +158,13 @@ def create_booking_request(
     )
     db.add(request)
     db.flush()
+    add_request_event(
+        db,
+        request_id=request.id,
+        event="created",
+        actor_user_id=user_id,
+        note="Booking request submitted",
+    )
     for slot_start in slots_between(start, end):
         db.add(
             BookingSlot(
@@ -236,6 +246,14 @@ def decide_request(
 
     if decision == "rejected":
         db.execute(delete(BookingSlot).where(BookingSlot.request_id == request_id))
+    add_request_event(
+        db,
+        request_id=request_id,
+        event=decision,
+        actor_user_id=admin_id,
+        note=rejection_note if decision == "rejected" else None,
+        created_at=decided_at,
+    )
     db.commit()
     return None
 
@@ -261,6 +279,14 @@ def cancel_request(db: Session, booking_request: Request) -> str | None:
         db.rollback()
         return "This request changed before it could be cancelled."
     db.execute(delete(BookingSlot).where(BookingSlot.request_id == booking_request.id))
+    add_request_event(
+        db,
+        request_id=booking_request.id,
+        event="cancelled",
+        actor_user_id=booking_request.user_id,
+        note="Cancelled by requester",
+        created_at=now,
+    )
     db.commit()
     return None
 

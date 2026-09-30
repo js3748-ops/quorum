@@ -61,9 +61,12 @@ Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
 - `/api/resources/{id}`: resource details, unavailable windows, and recent requests.
 - `/api/requests`: create a request with conflict alternatives.
 - `/api/requests/{id}` and `/api/my-requests`: request details and user history.
+- `/api/dashboard`: personal upcoming bookings, pending work, decisions, zone load, and hold notices.
+- `/api/admin/home`: scoped pending work, today's counts, and resources on hold.
 - `/api/admin/requests/*`: pending queue plus approve and reject actions.
 - `/api/admin/all-requests`: all visible-user requests with status, role, and resource filters.
-- `/api/admin/resources/*`: create, update, deactivate, and block resources.
+- `/api/admin/history` and `/api/admin/history.csv`: scoped audit history with filters and CSV export.
+- `/api/admin/resources/*`: create, update, deactivate, hold, release, and block resources.
 - `/api/admin/dashboard`: request counts, peak hours, congestion, and utilization analytics.
 
 Every endpoint has a tag, summary, typed request schema, and typed response schema in `/docs`.
