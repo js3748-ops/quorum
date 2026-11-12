@@ -77,7 +77,9 @@ quorum/
 │   │   ├── resources.py        /api/resources: NL or structured search and ranking; /api/resources/{id} detail
 │   │   ├── bookings.py         /api/requests (create, get, cancel), /api/my-requests
 │   │   ├── admin.py            /api/admin/*: users, request queue and decisions, extend, all-requests, history (+CSV), resources/holds/unavailability
-│   │   └── dashboard.py        /api/dashboard (user), /api/admin/home, /api/admin/dashboard (analytics)
+│   │   ├── dashboard.py        /api/dashboard (user), /api/admin/home, /api/admin/dashboard (analytics)
+│   │   ├── sensors.py          /api/sensors: scoped sensor CRUD and key rotation (admins)
+│   │   └── occupancy.py        /api/occupancy: sensor reading ingestion (X-Sensor-Key), live view, per-minute history
 │   └── services/
 │       ├── booking.py          slot maths, conflict detection, create/decide/cancel/extend, alternatives, lazy expiry
 │       ├── analytics.py        zone_loads(), ranked_resources() (congestion ranking), current_zone_loads(), weekly dashboard
@@ -85,6 +87,7 @@ quorum/
 │       ├── request_events.py   add_request_event(): the single audit-log writer
 │       ├── natural_language.py LLM parser (OpenAI-compatible, 8 s timeout) with rule-based fallback; VagueSearchError
 │       ├── otp.py              email OTP challenges: create, consume, SMTP send, rate limits
+│       ├── occupancy.py        sensor keys, reading validation and rate limit, smoothing, live view, history, retention
 │       └── booking_time.py     INDIA_TIMEZONE, india_now()
 ├── frontend/
 │   ├── *.html                  one page per screen; <body data-page="..."> selects the page function in app.js
@@ -188,6 +191,13 @@ Other rules: admins cannot create bookings (403). A user may hold at most `MAX_P
 `id`, `request_id` (FK), `event` (string: `created`, `approved`, `rejected`, `cancelled`, `expired`, `extended`, `auto_cancelled_hold`, `auto_cancelled_unavailability`), `actor_user_id` (nullable; null for system expiry), `note`, `created_at` (IST).
 The only writer is `services/request_events.add_request_event()`, which adds the row to the caller's session. It is committed in the **same transaction** as the state change. Events are returned on every `BookingRequestResponse.events` and drive the timeline UI. Admins search them via `/api/admin/history` (filters: status, date range, resource, requester, deciding admin, free text across purpose, notes and event notes) and export them as CSV via `/api/admin/history.csv`. Both are scope-limited.
 
+### `sensors` (Sensor)
+`id`, `resource_id` (FK, indexed), `name`, `api_key_hash` (SHA-256 hex of the full key; the plain key is never stored), `is_active`, `is_simulated`, `last_seen_at` (server receive time of the last accepted reading, IST), `created_at` (IST).
+Keys look like `<sensor id>.<random secret>`. The id prefix selects the row, and the hash is then compared with `hmac.compare_digest`. A dummy comparison runs for unknown ids so they take the same time.
+
+### `occupancy_readings` (OccupancyReading)
+`id`, `sensor_id` (FK, nullable: set to null when the sensor is deleted so the resource history survives), `resource_id` (FK), `people_count` (CHECK ≥ 0), `recorded_at` (IST; timezone-aware input is converted, naive input is taken as IST). Index `ix_occupancy_readings_resource_recorded` on `(resource_id, recorded_at)`. Rows hold counts and timestamps only.
+
 ### `booking_slots` (BookingSlot)
 `id`, `request_id`, `resource_id`, `slot_start`, with **`UNIQUE(resource_id, slot_start)`** (`uq_resource_slot`). There is one row per 30-minute slot of every pending or approved request. Rows are deleted on reject, cancel and expire, and added on extend.
 
@@ -227,6 +237,27 @@ The only writer is `services/request_events.add_request_event()`, which adds the
 Seeded demo users (password `demo1234`): students `asha@`, `kabir@`, `nila@`; faculty `ananya@`, `rohan@`; admins `admin@` (all), `lab.coordinator@` (labs), `facilities@` (facilities). All are on the `@quorum.local` domain.
 
 ---
+
+## 4a. Occupancy sensors
+
+**Admin endpoints** (`routes/sensors.py`, gate `get_admin` + `admin_can_access_resource`; out-of-scope returns 404):
+- `POST /api/sensors` `{resource_id, name, is_simulated?}` returns 201 `{sensor, api_key, message}`. The key is shown once, with `Cache-Control: no-store`.
+- `GET /api/sensors` lists scoped sensors with `resource_name`, `status` (`online` if a reading arrived in the last 60 s, `offline`, or `inactive`) and `last_seen_at`.
+- `PATCH /api/sensors/{id}` `{name?, is_active?}` (at least one is required).
+- `POST /api/sensors/{id}/rotate-key` issues a new key, shown once. The old key stops working immediately.
+- `DELETE /api/sensors/{id}` revokes the key. Readings are kept with `sensor_id = null`.
+
+**Sensor endpoint:** `POST /api/occupancy/readings` with header `X-Sensor-Key`, body `{people_count, recorded_at?}`. Unknown fields are rejected (422), so no image data can be posted.
+- 401: missing or wrong key. 403: sensor inactive. 422: count not an integer in 0–1000. 400: `recorded_at` more than 2 minutes in the future.
+- 429 + `Retry-After`: more than one reading per sensor within 2 seconds. This is enforced atomically by a compare-and-set on `sensors.last_seen_at`, which is also how `last_seen_at` gets updated.
+
+**Read endpoints** (any signed-in user via `get_current_user`):
+- `GET /api/occupancy/live` returns, for every resource: `current_booking` (the approved request covering now: `request_id`, `start`, `end`, `expected_attendance`; no requester details), `people_count` (median of active-sensor readings with `recorded_at` in the last 60 s, rounded half up; null if there are none), `capacity`, `sensor_status` (`online` / `offline` / `unsensored` = no active sensor), `last_reading_at`, and `status` (always `"unknown"` for now; computed in a later phase).
+- `GET /api/occupancy/{resource_id}/history?from=&to=` returns per-minute buckets (`average`, `median`, `min`, `max`, `readings`). It defaults to the last hour, allows at most 7 days, and returns 400 for an inverted range and 404 for an unknown resource.
+
+**Retention:** `services/occupancy.purge_old_readings()` deletes readings older than 30 days. With no scheduler in the codebase, it runs once in the FastAPI startup hook (`backend/main.py`).
+
+Occupancy timestamps in API responses carry the IST offset (`+05:30`).
 
 ## 5. Congestion-aware ranking
 
@@ -300,6 +331,7 @@ python -m unittest discover -s tests -v
 | `tests/test_auth_security.py` | login throttle lockout and reset, session rotation, expiry |
 | `tests/test_natural_language.py` | LLM-first parsing, clarification for vague queries, rule fallback edge cases |
 | `tests/test_otp.py` | hashed single-use codes, attempt limit, expiry, resend throttle |
+| `tests/test_occupancy.py` | sensor key auth (valid, wrong, malformed, inactive, rotated, deleted), reading validation, 2 s rate limit, admin scope, median smoothing, live and offline status, history buckets, 30-day purge |
 
 **Integration scripts:** these need a running backend on a **freshly seeded** database. They create real bookings, so point them at a throwaway DB, for example `DATABASE_URL=sqlite:///path/to/tmp.db`.
 
@@ -327,10 +359,10 @@ The integration scripts ran against a seeded scratch database outside the repo, 
 
 ## 8. Background jobs and schedulers
 
-**There are none.** The repo has no scheduler, cron, worker thread, `BackgroundTasks` or asyncio task. The only startup hook is `init_db()`. Time-based behaviour happens lazily, inside normal requests:
+**There are none.** (Occupancy retention runs once per server start; see section 4a.) The repo has no scheduler, cron, worker thread, `BackgroundTasks` or asyncio task. The only startup hook is `init_db()`. Time-based behaviour happens lazily, inside normal requests:
 
 - `expire_pending_requests(db)` runs at the top of almost every booking, resource, admin and dashboard endpoint. It flips pending requests whose `start <= india_now()` to `expired`, deletes their slots, writes an `expired` event (actor null) and commits. A request only expires once someone calls the API.
 - Old OTP challenges (more than 1 day old) are deleted inside `create_otp_challenge`.
 - `LoginThrottle` state is in-process memory. It resets on restart and is not shared across workers.
 
-There is also no camera or sensor code in the repo today. The words "camera" and "sensors" only appear as equipment tags.
+Occupancy sensors (section 4a) post people counts over HTTP. The backend accepts only counts and timestamps, never images.

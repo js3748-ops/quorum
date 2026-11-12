@@ -6,8 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from backend.database import init_db
-from backend.routes import admin, auth, bookings, dashboard, resources
+from backend.database import SessionLocal, init_db
+from backend.routes import admin, auth, bookings, dashboard, occupancy, resources, sensors
+from backend.services.occupancy import purge_old_readings
 
 
 load_dotenv()
@@ -22,6 +23,9 @@ app = FastAPI(
 @app.on_event("startup")
 def startup():
     init_db()
+    # No scheduler exists; occupancy retention runs once per server start.
+    with SessionLocal() as db:
+        purge_old_readings(db)
 
 
 @app.get("/", include_in_schema=False)
@@ -35,6 +39,8 @@ app.include_router(bookings.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(dashboard.user_router)
+app.include_router(sensors.router)
+app.include_router(occupancy.router)
 
 # Local development only. Production deployments must set SESSION_SECRET.
 SESSION_SECRET = os.getenv("SESSION_SECRET") or "local-development-only-change-me"

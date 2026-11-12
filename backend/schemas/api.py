@@ -387,3 +387,107 @@ class AdminHistoryResponse(BaseModel):
     resources: list[ResourceResponse]
     requesters: list[RequestUserResponse]
     deciding_admins: list[RequestUserResponse]
+
+
+class SensorCreate(BaseModel):
+    resource_id: int
+    name: str = Field(min_length=1, max_length=120)
+    is_simulated: bool = False
+
+    @model_validator(mode="after")
+    def validate_name(self):
+        self.name = self.name.strip()
+        if not self.name:
+            raise ValueError("Sensor name is required.")
+        return self
+
+
+class SensorUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_fields(self):
+        if self.name is None and self.is_active is None:
+            raise ValueError("Provide a new name or an active state.")
+        if self.name is not None:
+            self.name = self.name.strip()
+            if not self.name:
+                raise ValueError("Sensor name is required.")
+        return self
+
+
+class SensorResponse(BaseModel):
+    id: int
+    resource_id: int
+    resource_name: str
+    name: str
+    is_active: bool
+    is_simulated: bool
+    status: Literal["online", "offline", "inactive"]
+    last_seen_at: datetime | None
+    created_at: datetime
+
+
+class SensorListResponse(BaseModel):
+    sensors: list[SensorResponse]
+
+
+class SensorKeyResponse(BaseModel):
+    sensor: SensorResponse
+    api_key: str
+    message: str
+
+
+class OccupancyReadingCreate(BaseModel):
+    # Counts and timestamps only. Unknown fields (for example image data) are rejected.
+    model_config = ConfigDict(extra="forbid")
+
+    people_count: int = Field(ge=0, le=1000, strict=True)
+    recorded_at: datetime | None = None
+
+
+class OccupancyReadingResponse(BaseModel):
+    id: int
+    sensor_id: int
+    resource_id: int
+    people_count: int
+    recorded_at: datetime
+
+
+class CurrentBookingResponse(BaseModel):
+    request_id: int
+    start: datetime
+    end: datetime
+    expected_attendance: int
+
+
+class LiveOccupancyItem(BaseModel):
+    resource: ResourceResponse
+    current_booking: CurrentBookingResponse | None
+    people_count: int | None
+    capacity: int
+    sensor_status: Literal["online", "offline", "unsensored"]
+    last_reading_at: datetime | None
+    status: str
+
+
+class LiveOccupancyResponse(BaseModel):
+    generated_at: datetime
+    resources: list[LiveOccupancyItem]
+
+
+class OccupancyBucket(BaseModel):
+    minute: datetime
+    average_people_count: float
+    median_people_count: int
+    min_people_count: int
+    max_people_count: int
+    readings: int
+
+
+class OccupancyHistoryResponse(BaseModel):
+    resource_id: int
+    start: datetime
+    end: datetime
+    buckets: list[OccupancyBucket]

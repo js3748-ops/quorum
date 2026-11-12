@@ -33,10 +33,10 @@ backend/database.py        engine, get_db, init_db (+ manual migrations)
 backend/auth.py            password hashing, login throttle, session validity
 backend/models/            all ORM models (one module)
 backend/schemas/api.py     all Pydantic request/response models
-backend/routes/            thin HTTP layer: auth, resources, bookings, admin, dashboard
-backend/routes/dependencies.py   get_current_user / get_admin / get_campus_admin
+backend/routes/            thin HTTP layer: auth, resources, bookings, admin, dashboard, sensors, occupancy
+backend/routes/dependencies.py   get_current_user / get_admin / get_campus_admin / get_sensor
 backend/routes/helpers.py        request_response / resource_response serializers
-backend/services/          business logic: booking, analytics, admin_scope, request_events, natural_language, otp
+backend/services/          business logic: booking, analytics, admin_scope, request_events, natural_language, otp, occupancy
 frontend/js/api.js         the only fetch() wrapper
 frontend/js/app.js         page functions dispatched by <body data-page>
 tests/                     unittest, in-memory SQLite, mocked SMTP/LLM
@@ -61,6 +61,8 @@ scripts/                   integration scripts against a live API
 
 **Auth checks**
 - Every endpoint injects exactly one of `get_current_user`, `get_admin` or `get_campus_admin` from `backend/routes/dependencies.py`. Never read `request.session` directly in a route.
+- The one machine-facing exception is sensor ingestion (`POST /api/occupancy/readings`), which uses `get_sensor` (the `X-Sensor-Key` header, compared as a SHA-256 hash in constant time). Sensor keys are shown once at create or rotate and never stored in plain text or logged.
+- Sensor management (`/api/sensors`) is open to any admin whose scope covers the sensor's resource, not only the Campus Admin.
 - Admin lists go through `scope_resource_query(query, admin)` (the query must join `Resource`). Admin single-item actions check `admin_can_access_resource(admin, resource)` and return 404 when it fails.
 - User management and resource management are Campus Admin only (`get_campus_admin`).
 - Exclude `role == "background"` users from anything user-facing. Admins cannot create bookings or edit their own profile.
@@ -76,7 +78,7 @@ scripts/                   integration scripts against a live API
 1. **Never break existing features or tests.** Run the full suite (unit tests and the integration scripts above) after every change, and report the results honestly.
 2. **Every state change to a booking must be written to the audit history** (`request_events`) through `add_request_event`, in the same transaction as the change.
 3. **All new endpoints follow the existing auth and admin-scope rules.** Use the dependency gates, scope filtering, 404 for out-of-scope items, and Campus-Admin-only management.
-4. **Camera frames are never stored or sent anywhere.** Only counts and timestamps leave the sensor. No image or frame data may reach the database, logs, the API, the LLM or any third party.
+4. **Camera frames are never stored or sent anywhere.** Only counts and timestamps leave the sensor. No image or frame data may reach the database, logs, the API, the LLM or any third party. `OccupancyReadingCreate` forbids extra fields to enforce this. Keep it that way.
 
 - Never run git commit or git push. I commit and push myself.
 

@@ -2,9 +2,11 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -160,3 +162,38 @@ class BookingSlot(Base):
 
     request: Mapped[Request] = relationship(back_populates="slots")
     resource: Mapped[Resource] = relationship()
+
+
+class Sensor(Base):
+    __tablename__ = "sensors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    resource_id: Mapped[int] = mapped_column(ForeignKey("resources.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # SHA-256 hex digest of the full API key. The plain key is never stored.
+    api_key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_simulated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Server receive time (IST) of the last accepted reading.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=india_now, nullable=False)
+
+    resource: Mapped[Resource] = relationship()
+
+
+class OccupancyReading(Base):
+    """A people count reported by a sensor. Counts and timestamps only, never images."""
+
+    __tablename__ = "occupancy_readings"
+    __table_args__ = (
+        Index("ix_occupancy_readings_resource_recorded", "resource_id", "recorded_at"),
+        CheckConstraint("people_count >= 0", name="ck_occupancy_people_count_nonnegative"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Null once the reporting sensor is deleted; the resource history is kept.
+    sensor_id: Mapped[int | None] = mapped_column(ForeignKey("sensors.id"), nullable=True)
+    resource_id: Mapped[int] = mapped_column(ForeignKey("resources.id"), nullable=False)
+    people_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # IST, as reported by the sensor (or server receive time when omitted).
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
