@@ -1,0 +1,33 @@
+[
+  {
+    "label": "Quiet Room L1",
+    "sensor_key": "REPLACE_WITH_KEY_FOR_QUIET_ROOM_L1",
+    "pattern": "normal",
+    "expected": 18
+  },
+  {
+    "label": "AI Lab 201",
+    "sensor_key": "REPLACE_WITH_KEY_FOR_AI_LAB_201",
+    "pattern": "overcrowded",
+    "expected": 30,
+    "capacity": 36
+  },
+  {
+    "label": "Library Seminar",
+    "sensor_key": "REPLACE_WITH_KEY_FOR_LIBRARY_SEMINAR",
+    "pattern": "ghost",
+    "expected": 40
+  },
+  {
+    "label": "Commons Classroom A",
+    "sensor_key": "REPLACE_WITH_KEY_FOR_COMMONS_CLASSROOM_A",
+    "pattern": "fluctuating",
+    "expected": 30
+  },
+  {
+    "label": "Archive Study",
+    "sensor_key": "REPLACE_WITH_KEY_FOR_ARCHIVE_STUDY",
+    "pattern": "empty",
+    "expected": 0
+  }
+]

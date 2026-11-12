@@ -41,6 +41,7 @@ frontend/js/api.js         the only fetch() wrapper
 frontend/js/app.js         page functions dispatched by <body data-page>
 tests/                     unittest, in-memory SQLite, mocked SMTP/LLM
 scripts/                   integration scripts against a live API
+sensor/                    standalone camera client (YOLO + OpenCV) and simulator; own requirements.txt, NOT part of the backend
 ```
 
 ## Conventions

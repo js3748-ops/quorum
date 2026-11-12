@@ -259,6 +259,8 @@ Seeded demo users (password `demo1234`): students `asha@`, `kabir@`, `nila@`; fa
 
 Occupancy timestamps in API responses carry the IST offset (`+05:30`).
 
+**Clients:** `sensor/` (outside the backend, with its own `requirements.txt`) contains `quorum_sensor.py` (webcam or IP-camera person counter: YOLO nano, rolling median of 5 frames, posts every N s) and `simulate_sensors.py` (patterned fake counts for sensors created with `is_simulated: true`). See `sensor/README.md`.
+
 ## 5. Congestion-aware ranking
 
 Entry point: `GET /api/resources` (`routes/resources.py::search_resources`) → `services/analytics.py::ranked_resources()`.

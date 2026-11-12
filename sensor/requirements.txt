@@ -1,0 +1,5 @@
+# Sensor client only. Not part of the backend; install into its own virtual environment.
+# ultralytics pulls in PyTorch (several hundred MB) and OpenCV.
+ultralytics>=8.3.0
+opencv-python>=4.8.0
+python-dotenv>=1.0.0

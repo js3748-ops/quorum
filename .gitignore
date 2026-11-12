@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 quorum.db
 .env
+sensor/.env
+sensor/simulated_sensors.json
+*.pt
+sensor/.venv/
