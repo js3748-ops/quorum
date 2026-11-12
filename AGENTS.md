@@ -77,3 +77,7 @@ scripts/                   integration scripts against a live API
 2. **Every state change to a booking must be written to the audit history** (`request_events`) through `add_request_event`, in the same transaction as the change.
 3. **All new endpoints follow the existing auth and admin-scope rules.** Use the dependency gates, scope filtering, 404 for out-of-scope items, and Campus-Admin-only management.
 4. **Camera frames are never stored or sent anywhere.** Only counts and timestamps leave the sensor. No image or frame data may reach the database, logs, the API, the LLM or any third party.
+
+- Never run git commit or git push. I commit and push myself.
+
+- Never run git commit or git push. I commit and push myself.
